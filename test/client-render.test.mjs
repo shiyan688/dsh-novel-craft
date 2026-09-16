@@ -19,8 +19,18 @@ import { join } from 'node:path'
 import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 
-import { apply as applyHost } from '../lib/index.js'
 import { createWorkspace } from './fixtures.mjs'
+
+// 同上：没装依赖时给一句人话，而不是 ESM 解析栈
+let applyHost
+try {
+  ;({ apply: applyHost } = await import('../lib/index.js'))
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error)
+  if (!message.includes('Cannot find package')) throw error
+  console.log('\n跳过：缺少 peer 依赖（' + message.split("'")[1] + '）。先安装再跑：npm install')
+  process.exit(0)
+}
 
 const CLIENT_PATH = join(import.meta.dirname, '../lib/client.js')
 

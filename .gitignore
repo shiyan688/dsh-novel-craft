@@ -9,5 +9,6 @@ node_modules/
 marks.json
 
 # 本机调试
+.npm-cache/
 *.log
 .DS_Store

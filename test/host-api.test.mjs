@@ -14,8 +14,21 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { extname, join } from 'node:path'
 
-import { apply, splitSegments, buildProfileSection } from '../lib/index.js'
 import { createWorkspace } from './fixtures.mjs'
+
+// 直接 clone 下来还没装依赖时，别甩一个 ESM 解析错误：说清该做什么再退出
+const loadPlugin = async () => {
+  try {
+    return await import('../lib/index.js')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('Cannot find package')) throw error
+    console.log('\n跳过：缺少 peer 依赖（' + message.split("'")[1] + '）。先安装再跑：npm install')
+    console.log('（真实部署里这些依赖由 dsh profile 提供，不需要手动装。）')
+    process.exit(0)
+  }
+}
+const { apply, splitSegments, buildProfileSection } = await loadPlugin()
 
 const TEXT_EXT = new Set(['.txt', '.md'])
 

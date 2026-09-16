@@ -78,8 +78,12 @@ one click (✕), and the whole file is editable in the workbench.
 ## Tests
 
 ```sh
+npm install   # dev + peer deps (a deployment supplies the peers from its profile)
 npm test
 ```
+
+A fresh clone without dependencies does not dump stack traces: the static guard runs and the
+other two suites print a skip notice and exit 0.
 
 - `test/static-guard.test.mjs` — source-level guard: hooks must never follow an early
   `return` (that bug makes the panel silently fail to open), i18n key parity, `t('key')`

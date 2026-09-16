@@ -131,8 +131,11 @@ dsh plugin --profile web add github:shiyan688/dsh-novel-craft   # 或直接从 G
 都不需要浏览器、也不需要起 dsh：假 ctx 挂上真插件，真跑一遍。
 
 ```bash
-npm test    # 或 node --run test：静态守卫 → 宿主接口 → 客户端真渲染
+npm install   # 开发依赖 + peer 依赖（部署里这些 peer 由 profile 提供）
+npm test      # 或 node --run test：静态守卫 → 宿主接口 → 客户端真渲染
 ```
+
+刚 clone 下来还没装依赖时不会甩一堆报错：静态守卫照跑，另外两个会打印「跳过：先 npm install」并以 0 退出。
 
 - `host-api.test.mjs`：把插件注册的路由放到真实回环端口上打，覆盖标注闭环、
   推荐目录、篇数徽标、档案三层产物、旧档案迁移、提炼链路（用假 LLM 验输入边界与
