@@ -37,6 +37,28 @@ A 「🎴 抽卡工作台」 entry appears at the bottom of the sidebar.
 Requires the dsh **web** profile (`dsh-web-app`) with an **LLM service mounted**
 (`ctx.llm`) for the distillation step. Without one, marking and hand-editing still work.
 
+## Version compatibility
+
+dsh ships as **independently versioned npm packages** — in one public release the CLI may be
+`0.1.5-rc.2` while the client runtime is still `0.1.1-rc.2`. The plugin therefore pins nothing:
+peer dependencies are declared as `*` and resolved from your profile at runtime (the community
+convention).
+
+| dsh version | What was verified |
+|---|---|
+| `0.1.0-rc.7` / packages `0.1.0-rc.8` | Development and daily use; the whole test suite runs against it |
+| `0.1.5-rc.2` (current npm `next`) | **A separate install plus an isolated DSH_HOME was booted**: the host half loaded and registered every route (`/state` → 200 with the full payload), the client half was picked up by the roster and served through the new combo-script URL (content identical to disk), and the plugin's own loopback routes are unaffected by the new token gate |
+
+Known differences (harmless here, but worth knowing):
+
+- **Newer dsh gates the web shell behind a token**: plain `http://127.0.0.1:<port>/` returns 401;
+  use the `?token=…` URL printed at startup. Plugin routes are not gated.
+- **The client bundle URL shape changed**: newer versions serve combo scripts
+  (`/plugins/??a/client.js,b/client.js&rev=…`) instead of `/plugins/<id>/client.js`.
+
+The host half loads `@deepseek-ai/dsh-llm` **lazily**, so a future rename or export change in
+that package can only break the distillation step, never marking, evidence or the profile.
+
 ## Three artifacts, one rule
 
 Everything lives in `<candidate dir>/.dsh-novel-craft/` and travels with the manuscript:

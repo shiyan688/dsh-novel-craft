@@ -1,7 +1,7 @@
 {
   "name": "dsh-novel-craft",
   "description": "DSH 抽卡式作者选段工作台：把多个结构不同的候选稿摊开，作者只点哪段好哪段坏，标注沉淀成「作者偏好档案」，驱动下一轮收敛。",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",

@@ -426,6 +426,16 @@ head('提炼的失败与边界')
     await fallback.close()
   }
 
+  // 提炼之外的接口在"LLM 包不可用"时也必须照常工作（惰性加载的意义）
+  const stillWorks = await serve({ candidateDir: fixture, enabled: true })
+  try {
+    const state = await getJson(stillWorks.base + 'state')
+    const evidence = await postJson(stillWorks.base + 'evidence', {})
+    ok('没有 LLM 时标注/证据/档案照常可用', state.status === 200 && evidence.status === 200 && evidence.body.profile.includes('## 已验证偏好'))
+  } finally {
+    await stillWorks.close()
+  }
+
   const noRoute = await serve({ candidateDir: fixture, enabled: true }, { llm: fakeLlm('+ xxxx') })
   try {
     const { status, body } = await postJson(noRoute.base + 'distill', {})
