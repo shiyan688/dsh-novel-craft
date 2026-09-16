@@ -1,0 +1,13 @@
+# 依赖（安装后由 dsh / pnpm 生成）
+node_modules/
+
+# 工作台在作品目录里留下的运行时数据
+.dsh-novel-craft/
+作者偏好档案.md
+证据摘录.md
+提炼原始输出.md
+marks.json
+
+# 本机调试
+*.log
+.DS_Store

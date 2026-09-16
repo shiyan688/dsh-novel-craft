@@ -1,0 +1,7 @@
+# dsh-novel-craft bundle patch layer.
+# `dsh plugin add` 安装时作为一层应用：把插件行插进 web profile 的组合配置。
+# 插件提供：抽卡式作者选段工作台（侧栏入口 + 全屏浮层），标注落盘为
+# <项目>/.dsh-novel-craft/marks.json，并可汇总成「作者偏好档案.md」。
+- insert:
+    - id: dsh-novel-craft
+      name: 'dsh-novel-craft'
