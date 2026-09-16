@@ -75,6 +75,19 @@ one click (✕), and the whole file is editable in the workbench.
 - **Waiting is visible.** The distill button shows elapsed seconds; every run archives the
   model's raw reply to `提炼原始输出.md` so format failures are diagnosable.
 
+## Companion skills (optional, recommended)
+
+The plugin lets the author mark with almost no effort; the skills tell the agent what to do
+with those marks. Both live under `skills/`:
+
+```sh
+cp -r skills/taste-calibration skills/novel-writing <your-project>/.dsh/skills/
+```
+
+- `taste-calibration` — the gacha-style calibration loop this plugin is built around;
+- `novel-writing` — Chinese web-fiction craft: an anti-"AI prose" checklist (six dimensions),
+  multi-POV information gaps, terminology/ledger discipline, restraint.
+
 ## Tests
 
 ```sh
@@ -100,3 +113,20 @@ render suite prints a skip notice and exits 0 (`npm install`, or `DSH_REACT_ROOT
 ## License
 
 MIT. Third-party attributions in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+
+## Credits
+
+- The anti-"AI prose" checklist in `skills/novel-writing` is adapted from
+  [dsh-novel-solo](https://github.com/Tkingxiao/dsh-novel-solo) (MIT, Copyright (c) 2026 Tkingxiao).
+- Built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+  (MIT, Copyright (c) 2026 DeepSeek): public slots, client services and the LLM service are used;
+  no source is copied. The one-shot auxiliary model call follows the published pattern of the
+  in-tree `dsh-session-title-llm` package.
+- Package layout follows the community collection
+  [linxiecoder/deepseek-harness-plugins](https://github.com/linxiecoder/deepseek-harness-plugins)
+  so that `dsh plugin add` works out of the box.
+- "Turn reasoning off for structured output" is documented in official Discussion
+  [#6857](https://github.com/deepseek-ai/deepseek-harness/discussions/6857) — we hit the same wall
+  on real hardware.
+
+Full list and license texts: [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

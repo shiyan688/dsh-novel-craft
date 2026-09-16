@@ -25,6 +25,17 @@ dsh plugin --profile web add github:shiyan688/dsh-novel-craft   # 或直接从 G
 要求：dsh 的 web profile（`dsh-web-app`），并且**挂载了 LLM 服务**（`ctx.llm`）——
 「提炼规律」那一步要调一次辅助模型。没挂也能用：标注照点，档案照编辑，只是不能自动提炼。
 
+## 配套 skill（可选，但强烈建议装）
+
+插件负责"让你低负担地点"，skill 负责"告诉 agent 怎么用这些标注"。`skills/` 下有两个：
+
+```sh
+cp -r skills/taste-calibration skills/novel-writing <你的作品目录>/.dsh/skills/   # 或 ~/.dsh/skills/
+```
+
+- **`taste-calibration`** — 抽卡式作者品味校准（本插件自研核心）：怎么造"结构不同"的候选、怎么把选段转成证据、怎么在下一轮收敛；
+- **`novel-writing`** — 中文网文写作手艺：禁AI腔（六维度判定）、多视角信息差、术语与账目口径、克制留白。
+
 ## 30 秒上手
 
 1. 侧栏点「🎴 抽卡工作台」→ 顶栏「📁」挑候选稿目录（推荐/最近/浏览/手动四种入口）；
@@ -163,3 +174,12 @@ dsh-novel-craft-plugin/
 ```
 
 第三方来源与许可见 `THIRD_PARTY_NOTICES.md`（MIT）。
+
+## 出处与致谢
+
+- **禁AI腔清单**（`skills/novel-writing`）改编自 [dsh-novel-solo](https://github.com/Tkingxiao/dsh-novel-solo)（MIT，Copyright (c) 2026 Tkingxiao）；
+- **运行平台** [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT，Copyright (c) 2026 DeepSeek）：本项目用它公开的插槽、客户端服务与 LLM 服务，未复制其源码；辅助模型调用的写法参考了平台内 `dsh-session-title-llm` 的公开实现；
+- **包布局约定**参考社区集合仓库 [linxiecoder/deepseek-harness-plugins](https://github.com/linxiecoder/deepseek-harness-plugins)，以便 `dsh plugin add` 直接可用；
+- **"推理要关掉"这条经验**来自官方 Discussion [#6857](https://github.com/deepseek-ai/deepseek-harness/discussions/6857)，我们在真机上踩过同一个坑。
+
+完整条目与许可证原文见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
