@@ -20,6 +20,7 @@ import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 
 import { createWorkspace } from './fixtures.mjs'
+import { resolveReact } from '../scripts/lib/resolve-react.mjs'
 
 // 同上：没装依赖时给一句人话，而不是 ESM 解析栈
 let applyHost
@@ -42,41 +43,6 @@ const CH9 = ws.draftsDir('第9章')
 
 // discover 的兜底扫描根是进程 cwd：钉成作品根，测试从哪儿跑都一样
 process.chdir(WORKSPACE)
-
-/**
- * 找到成对的 react / react-dom。找的顺序：
- * 1. DSH_REACT_ROOT 环境变量（任意能 require 到 react-dom 的目录）
- * 2. 本包 devDependencies（`npm install` 后就有）
- * 3. 部署自带的 react：顺着 peer 依赖 `@deepseek-ai/cordis` 的真实路径反推 node_modules
- * 4. 找不到就跳过渲染用例并明确说明——不给别人一堆看不懂的红。
- */
-function resolveReact() {
-  const roots = []
-  if (process.env.DSH_REACT_ROOT) roots.push(join(process.env.DSH_REACT_ROOT, 'package.json'))
-  const selfPkg = join(import.meta.dirname, '../package.json')
-  roots.push(selfPkg)
-  try {
-    const probe = createRequire(selfPkg)
-    const cordis = probe.resolve('@deepseek-ai/cordis/package.json')
-    const cut = cordis.lastIndexOf('node_modules')
-    const nm = cordis.slice(0, cut + 'node_modules'.length)
-    roots.push(join(nm, '@deepseek-ai/dsh-client-ui-trajectory/node_modules', 'react-dom/package.json'))
-    roots.push(join(nm, 'react-dom/package.json'))
-  } catch {
-    // 解析不到 peer 就算，换下一个候选
-  }
-  for (const base of roots) {
-    try {
-      const req = createRequire(base)
-      req.resolve('react')
-      req.resolve('react-dom/server')
-      return req
-    } catch {
-      // 这个位置没有成对的 react，继续找
-    }
-  }
-  return null
-}
 
 let failures = 0
 const ok = (name, cond, detail) => {
