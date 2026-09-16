@@ -102,7 +102,11 @@ const fakeLlm = {
 async function mountHost(config) {
   const routes = new Map()
   const ctx = {
-    inject: (deps, callback) => callback({ settings: { register: () => ({ get: () => config }) } }),
+    inject: (deps, callback) =>
+      callback({
+        settings: { register: () => ({ get: () => config }) },
+        webServer: { register: (row) => routes.set(row.path, row.handler) },
+      }),
     get: (name) => {
       if (name === 'webServer') return { register: (row) => routes.set(row.path, row.handler) }
       if (name === 'workspaceRegistry') return { list: () => [{ path: WORKSPACE }] }

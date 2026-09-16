@@ -56,6 +56,38 @@ Known differences (harmless here, but worth knowing):
 - **The client bundle URL shape changed**: newer versions serve combo scripts
   (`/plugins/??a/client.js,b/client.js&rev=…`) instead of `/plugins/<id>/client.js`.
 
+### Keeping up (automated)
+
+```sh
+node scripts/check-dsh-compat.mjs          # npm `next` by default
+node scripts/check-dsh-compat.mjs alpha    # or latest / alpha / an exact version
+```
+
+The script installs a **fresh dsh of that version** into a temp dir, wires this plugin the way a
+profile does, boots it with an isolated `DSH_HOME`, and asserts three things: the host routes
+answer, the client half lands in the boot manifest, and the bundle is served with the right
+content. It cleans up afterwards and never touches a running instance. CI runs it weekly for
+`latest / next / alpha / 0.1.0-rc.7` (`.github/workflows/compat.yml`).
+
+### Version policy: one line, no per-version forks
+
+We do **not** ship separate plugin builds per dsh version — the API surface we need has been
+stable between `0.1.0-rc.7` and `0.1.6-alpha.1`, and forking would only confuse installers.
+Instead: acquire services lazily with feature detection, prefer compatibility code over
+compatibility releases, and only if a release truly removes a capability we need, publish a
+`legacy` dist-tag line and document it here.
+
+### Two traps we hit (for fellow plugin authors)
+
+1. **A row's `apply` can run before services are mounted**: on newer dsh a *synchronous*
+   `apply` sees `ctx.get('webServer') === undefined` (verified on `0.1.6-alpha.1`). This plugin
+   therefore waits via `ctx.inject(['settings', 'webServer'], …)` with a timeout fallback.
+   Plugins that do "get, and silently return if missing" do nothing at all on newer builds.
+2. **The client bundle URL shape changed**: newer versions serve combo scripts
+   (`/plugins/??a/client.js,b/client.js&rev=…`) instead of `/plugins/<id>/client.js`. The
+   plugin does not care (the manifest supplies the URL), but hand-written test URLs will look
+   like "the plugin was not discovered".
+
 The host half loads `@deepseek-ai/dsh-llm` **lazily**, so a future rename or export change in
 that package can only break the distillation step, never marking, evidence or the profile.
 

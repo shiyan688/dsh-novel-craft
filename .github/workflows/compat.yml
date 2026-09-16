@@ -1,0 +1,44 @@
+# dsh 版本兼容性冒烟测试
+#
+# dsh 是一组各自独立发版的 npm 包（同一公开版本里 CLI 与客户端运行时版本号都可能不同），
+# 而且发版很密。这个工作流每周把 npm 上的几个通道各装一份全新 dsh，
+# 把本插件按 profile 的方式挂上去、用独立 DSH_HOME 起服务，断言：
+#   宿主路由可用 · 客户端半区进入启动清单 · 半区能下发且内容正确。
+#
+# 不需要任何 secret：全程只读公开 npm，模型调用不在测试范围内。
+name: dsh compat
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 每周一 04:17 UTC（北京时间 12:17）跟进一次
+    - cron: '17 4 * * 1'
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  compat:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # dist-tag 会随时间指向新版本，所以用 tag 而不是固定版本号；
+        # legacy 一行盯住老基线，防止改动把老用户改坏。
+        dsh: [latest, next, alpha, '0.1.0-rc.7']
+    name: dsh@${{ matrix.dsh }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: 安装依赖（测试需要 peer 与 react 对）
+        run: npm install --no-audit --no-fund
+
+      - name: 静态守卫 + 单元/接口测试
+        run: npm test
+
+      - name: 装一份全新 dsh 并跑兼容性冒烟
+        run: node scripts/check-dsh-compat.mjs ${{ matrix.dsh }}

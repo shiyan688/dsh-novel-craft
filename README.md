@@ -114,6 +114,38 @@ dsh 是**一组各自独立发版的 npm 包**——同一个公开版本里，C
   `/plugins/??a/client.js,b/client.js&rev=…`，旧版是 `/plugins/<id>/client.js`。
   插件无需关心（名册会给出地址），但自己写裸 URL 测试的人会踩到。
 
+### 怎么持续跟进（自动化）
+
+```sh
+node scripts/check-dsh-compat.mjs          # 默认测 npm 的 next
+node scripts/check-dsh-compat.mjs alpha    # 或 latest / alpha / 具体版本号
+```
+
+脚本会在临时目录里**真装一份指定版本的 dsh**、按 profile 的方式挂上本插件、用独立
+`DSH_HOME` 起服务，然后断言三件事：宿主路由可用、客户端半区进入启动清单、半区能下发且内容正确。
+跑完自动清理，不影响你本机正在用的实例（CI 里由 `.github/workflows/compat.yml` 每周一跑
+`latest / next / alpha / 0.1.0-rc.7` 四档）。
+
+### 版本策略：一条代码线，不拆分支
+
+我们**不为不同 dsh 版本维护不同的插件版本**。理由：实测下来需要的 API 面在 0.1.0-rc.7 与
+0.1.6-alpha.1 之间没变，拆分支只会让用户不知道该装哪个。做法是：
+
+- 服务一律**按需获取 + 特性探测**（`ctx.get()` 拿可选项、`ctx.inject()` 等就绪、缺了就降级）；
+- 出问题优先补**兼容代码**而不是发兼容版本；
+- 只有当某个版本真的移除了关键能力、无法共存时，才会另发一条 legacy 线并在这里写明
+  （npm dist-tag 可以同时挂 `latest` 与 `legacy`，用户装哪个都明确）。
+
+### 踩过的两个版本坑（写给插件作者）
+
+1. **行的 `apply` 可能早于服务挂载**：在较新的 dsh 里，同步 `apply` 中
+   `ctx.get('webServer')` 会拿到 `undefined`（实测 0.1.6-alpha.1）。本插件因此改成
+   `ctx.inject(['settings', 'webServer'], …)` 等两个服务都就绪，并带超时兜底——
+   写成"直接 get、拿不到就 return"的插件会在新版本里**静默什么都不做**。
+2. **客户端 bundle 的下发地址变了**：新版是组合脚本
+   `/plugins/??a/client.js,b/client.js&rev=…`，旧版是 `/plugins/<id>/client.js`。
+   插件本身不用关心（名册给出地址），但拿裸 URL 做测试的人会以为"插件没被收录"。
+
 宿主半区对 `@deepseek-ai/dsh-llm` 采用**惰性加载**：万一将来某个版本改了它的包名或导出，
 插件其余功能（标注、证据摘录、档案）照常可用，只有「提炼规律」这一步会给出明确提示。
 

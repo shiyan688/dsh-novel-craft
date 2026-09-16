@@ -63,14 +63,14 @@ const head = (name) => console.log(`\n【${name}】`)
  */
 function makeCtx(config, extras = {}) {
   const routes = new Map()
+  const webServer = { register: (row) => routes.set(row.path, row.handler) }
   const ctx = {
+    // 插件现在用 inject(['settings','webServer']) 等两个服务，回调参数要一起给
     inject: (deps, callback) => {
-      callback({ settings: { register: () => ({ get: () => config }) } })
+      callback({ settings: { register: () => ({ get: () => config }) }, webServer })
     },
     get: (name) => {
-      if (name === 'webServer') {
-        return { register: (row) => routes.set(row.path, row.handler) }
-      }
+      if (name === 'webServer') return webServer
       if (name === 'workspaceRegistry') {
         return { list: () => [{ path: WORKSPACE }] }
       }
