@@ -16,7 +16,9 @@
  *   node scripts/check-dsh-compat.mjs 0.1.6-alpha.1
  *   node scripts/check-dsh-compat.mjs alpha --keep   # 保留现场排查
  *
- * 退出码 0 = 全通过；1 = 有断言失败（CI 里据此报警）。
+ * 退出码：0 = 全通过，或"该版本在 npm 上已无法安装"（上游制品问题，按跳过处理并警告）；
+ *         1 = 插件在该版本上真的失败了（CI 里据此报警）。
+ * 想连"装不上"也判定失败，加 --strict。
  */
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
@@ -28,6 +30,7 @@ import { join } from 'node:path'
 const REPO_ROOT = join(import.meta.dirname, '..')
 const args = process.argv.slice(2)
 const KEEP = args.includes('--keep')
+const strict = args.includes('--strict')
 const spec = args.find((a) => !a.startsWith('--')) ?? 'next'
 const BOOT_TIMEOUT_MS = 120_000
 
@@ -99,6 +102,13 @@ async function authorizedFetch(base, path, log, cookie) {
 
 const base = (port) => `http://127.0.0.1:${port}`
 
+/** CI 里把结论写进 job summary，红了也不用翻日志。 */
+async function writeSummary(markdown) {
+  const path = process.env.GITHUB_STEP_SUMMARY
+  if (path === undefined || path === '') return
+  await writeFile(path, markdown, { flag: 'a' }).catch(() => {})
+}
+
 async function main() {
   const work = await mkdtemp(join(tmpdir(), 'dsh-compat-'))
   const home = join(work, 'home')
@@ -118,12 +128,19 @@ async function main() {
     const installed = await run(
       'npm',
       ['install', `@deepseek-ai/dsh@${spec}`, '--no-audit', '--no-fund', '--cache', join(work, '.npm-cache')],
-      { cwd: install, timeoutMs: 600_000 },
+      { cwd: install, timeoutMs: 300_000 },
     )
     const binPath = join(install, 'node_modules/@deepseek-ai/dsh/lib/bin.js')
     if (installed.code !== 0 || !existsSync(binPath)) {
-      record(`安装 dsh@${spec}`, false, (installed.err || installed.out).split('\n').filter(Boolean).slice(-2).join(' '))
-      throw new Error('install failed')
+      // 老版本（0.1.0-rc.x / 0.1.1-rc.x 等）现在从 npm 全新安装会卡死/失败，
+      // 这是上游制品的问题，不代表插件不兼容——按"跳过"处理，但要把话说清楚。
+      const tail = (installed.err || installed.out).split('\n').filter(Boolean).slice(-2).join(' ')
+      console.log(`  ⚠️  跳过 dsh@${spec}：这个版本在 npm 上已无法全新安装（上游制品问题）`)
+      if (tail !== '') console.log(`      ${tail}`)
+      await writeSummary(`## dsh@${spec} — 跳过\n\n该版本在 npm 上无法全新安装（安装退出码 ${installed.code}），属上游制品问题，未被判定为兼容性失败。\n`)
+      console.log(`\ndsh@${spec} 兼容性：跳过 ⚠️（版本装不上，非插件问题）`)
+      if (strict) process.exit(1)
+      process.exit(0)
     }
     const version = JSON.parse(await readFile(join(install, 'node_modules/@deepseek-ai/dsh/package.json'), 'utf8')).version
     record(`安装 dsh@${spec}`, true, `实际版本 ${version}`)
@@ -251,6 +268,10 @@ async function main() {
   }
 
   const failed = checks.filter((c) => !c.ok)
+  const lines = checks.map((c) => `| ${c.name} | ${c.ok ? '✅' : '❌'} | ${c.detail ?? ''} |`).join('\n')
+  await writeSummary(
+    `## dsh@${spec} — ${failed.length === 0 ? '通过 ✅' : `${failed.length} 项失败 ❌`}\n\n| 检查 | 结果 | 说明 |\n| --- | --- | --- |\n${lines}\n`,
+  )
   console.log(`\ndsh@${spec} 兼容性：${failed.length === 0 ? '全部通过 ✅' : `${failed.length} 项失败 ❌`}`)
   process.exit(failed.length === 0 ? 0 : 1)
 }
