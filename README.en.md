@@ -11,6 +11,13 @@ passages (no writing reviews, no rating scales) → those marks are compressed i
 The rule the whole plugin is built around: **only the rules reach the model's context.**
 Raw quotes never do.
 
+## UI preview
+
+A static snapshot rendered from the real components (not a mock-up):
+[`docs/preview.html`](./docs/preview.html) — open it in a browser after cloning; tabs switch
+between the reading view, the author-profile panel and the folder picker. Regenerate with
+`node scripts/build-preview.mjs` after changing the components.
+
 ## Install
 
 ```sh
