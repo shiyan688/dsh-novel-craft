@@ -39,17 +39,18 @@ const source = await readFile(CLIENT_PATH, 'utf8')
 const lines = source.split('\n')
 
 head('Hook 顺序（重点：不许出现在提前 return 之后）')
-for (const component of ['CraftEntry', 'CraftWorkbench', 'DirPicker', 'ProfileView']) {
+for (const component of ['CraftEntry', 'CraftWorkbench', 'DirPicker', 'ProfileView', 'ChapterDetail', 'StageView']) {
   const body = bodyOf(lines, component)
   ok(component + ' 存在', body !== null)
   if (body === null) continue
   const lastHook = body.reduce((last, line, i) => (HOOK_CALL.test(line) ? i : last), -1)
   const firstTopLevelIf = body.findIndex((line) => /^ {6}if \(/.test(line))
   if (component === 'CraftEntry') continue // 只有 useOpen 一个 Hook，无需判断顺序
+  // 没有提前 return 的组件天然安全（Hook 永远都会被调用到），不该因为"找不到 if"而报错
   ok(
-    component + '：Hook 全部在最早的提前 return 之前',
-    lastHook !== -1 && firstTopLevelIf !== -1 && lastHook < firstTopLevelIf,
-    `最后一个 Hook 在第 ${lastHook + 1} 行，最外层 if 在第 ${firstTopLevelIf + 1} 行`,
+    component + '：Hook 不晚于最早的提前 return',
+    firstTopLevelIf === -1 || (lastHook !== -1 && lastHook < firstTopLevelIf),
+    firstTopLevelIf === -1 ? '无提前 return' : `最后一个 Hook 在第 ${lastHook + 1} 行，最外层 if 在第 ${firstTopLevelIf + 1} 行`,
   )
 }
 

@@ -10,6 +10,11 @@
  * 为什么要单独装一份：dsh 是一组各自独立发版的包，直接拿本机 profile 测等于自欺欺人。
  * 全程隔离（临时 DSH_HOME + 随机端口 + 独立 node_modules），跑完就删。
  *
+ * Node 版本：dsh >= 0.1.5 实际要求 Node 22——用 Node 20 起它会**静默退出**（什么都不打印、
+ * 端口也不监听），看起来就像"插件不兼容"。所以本脚本默认找一份 Node 22 来起 dsh：
+ * 先看 DSH_NODE，再看 PATH 里的 node22，最后才用当前进程的 node；实在只有 Node 20 时，
+ * 启动失败会被判成"环境问题、跳过"，而不是"兼容性失败"。
+ *
  * 用法：
  *   node scripts/check-dsh-compat.mjs            # 测 npm 的 next
  *   node scripts/check-dsh-compat.mjs latest     # 测 npm 的 latest
@@ -20,12 +25,30 @@
  *         1 = 插件在该版本上真的失败了（CI 里据此报警）。
  * 想连"装不上"也判定失败，加 --strict。
  */
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 import { cp, mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+/** 找一个能跑 dsh 的 Node：DSh 0.1.5+ 要 22，用 20 会静默不启动。 */
+function resolveNode() {
+  const candidates = [process.env.DSH_NODE, 'node22', 'node22/bin/node', process.execPath].filter(
+    (x) => typeof x === 'string' && x !== '',
+  )
+  for (const candidate of candidates) {
+    try {
+      const out = execFileSync(candidate, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+      const major = Number(out.replace(/^v/, '').split('.')[0])
+      if (Number.isInteger(major) && major >= 22) return { bin: candidate, version: out }
+    } catch {
+      // 这个候选不存在或跑不起来：试下一个
+    }
+  }
+  return { bin: process.execPath, version: process.version }
+}
+const NODE = resolveNode()
 
 const REPO_ROOT = join(import.meta.dirname, '..')
 const args = process.argv.slice(2)
@@ -122,6 +145,7 @@ async function main() {
   let cookie = null
   try {
     console.log(`\n【准备】临时目录 ${work}`)
+    console.log(`        Node ${NODE.version}（${NODE.bin}）`)
 
     // ── 1. 装一份指定版本的 dsh ────────────────────────────────────────────
     await writeFile(join(install, 'package.json'), JSON.stringify({ name: 'compat-probe', private: true }, null, 2))
@@ -148,7 +172,7 @@ async function main() {
     // ── 2. 第一次启动：让 dsh 自己初始化 profile ───────────────────────────
     const port = await freePort()
     const bootOnce = async () => {
-      const proc = spawn(process.execPath, [binPath, 'web', '--no-open', '--port', String(port)], {
+      const proc = spawn(NODE.bin, [binPath, 'web', '--no-open', '--port', String(port)], {
         env: childEnv({ DSH_HOME: home }),
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -160,7 +184,18 @@ async function main() {
     }
     let boot = await bootOnce()
     if (!boot.up) {
-      record('首次启动（初始化 profile）', false, boot.log.split('\n').filter(Boolean).slice(-2).join(' '))
+      const detail = boot.log.split('\n').filter(Boolean).slice(-2).join(' ') || '（没有任何输出）'
+      const nodeMajor = Number(NODE.version.replace(/^v/, '').split('.')[0])
+      if (nodeMajor < 22) {
+        // Node 20 起 dsh 0.1.5+ 会静默退出：这是环境问题，不该记成插件不兼容
+        console.log(`  ⚠️  跳过 dsh@${spec}：dsh 需要 Node 22，当前用的是 ${NODE.version}（${NODE.bin}）`)
+        console.log('      设 DSH_NODE=/path/to/node22 再跑，或直接用 node22 执行本脚本。')
+        await writeSummary(`## dsh@${spec} — 跳过（Node 版本不足）\n\n本机用的是 ${NODE.version}，dsh >= 0.1.5 需要 Node 22；启动失败是环境问题，未被判定为兼容性失败。\n`)
+        console.log(`\ndsh@${spec} 兼容性：跳过 ⚠️（Node ${NODE.version} 跑不起 dsh）`)
+        if (strict) process.exit(1)
+        process.exit(0)
+      }
+      record('首次启动（初始化 profile）', false, detail)
       throw new Error('boot failed')
     }
     boot.proc.kill('SIGTERM')

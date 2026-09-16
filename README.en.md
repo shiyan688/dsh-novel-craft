@@ -1,4 +1,4 @@
-# dsh-novel-craft — a gacha-style taste-calibration workbench for dsh
+# dsh-novel-craft — a novel-writing workbench that learns your taste
 
 [![npm](https://img.shields.io/npm/v/dsh-novel-craft?color=blue)](https://www.npmjs.com/package/dsh-novel-craft)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
@@ -14,6 +14,22 @@ passages (no writing reviews, no rating scales) → those marks are compressed i
 
 The rule the whole plugin is built around: **only the rules reach the model's context.**
 Raw quotes never do.
+
+Since 0.2 it is also a workbench you can finish a whole book in. Each capability exists to
+serve that one core loop:
+
+| | What it does |
+|---|---|
+| 🎴 Gacha + profile | You mark good/bad passages → they are distilled into rules → rules are the only taste input in context. Includes **rule → evidence lookup**: click a rule to see the very passages it came from. |
+| 🗂 Chapter board | Finds your book root automatically (wherever chapters, setting, cast and summaries live) and shows one row per chapter: chars, rounds, marks, notes, pack, reader score, tension, findings. |
+| 📦 Per-chapter writing pack | Assembles everything one chapter needs into **a single file** (chapter brief + rules + previous chapter's ending + recap + cast + ledger + plot nodes + unpaid setups + anti-AI-tone list + requirements) and reports a **context budget table**. The writing session reads only that file. |
+| 💬 Note-driven revision | Read the text, click a paragraph, press `A` to leave a note. “Revise by notes” rewrites **only annotated paragraphs — every other paragraph stays byte-identical**, verified before write-back, with a per-paragraph before/after and an automatic backup. |
+| 📈 Plot checks | Tension curve (hand-rated or estimated), outline drift, unpaid setups, length imbalance, event density, score decline — all local statistics, **raw text never enters a model context**. |
+| 🧭 Book stages | Idea → setting → cast → outline → chapters → revise → finish: artifact checklist, gates, and one-click drafting (the model writes a first pass, you edit it). |
+
+It reads the directory habits you already have (`书名-第8章.txt`, `剧情/第 8 章 剧情总结.md`,
+`人物/*.json`, `设定/道具与增益台账.md`, `factory/runs/<book>/第N章/候选稿/`,
+`评论/第N章_评论数据.json`) — no reorganising required.
 
 ## UI preview
 
@@ -101,6 +117,32 @@ compatibility releases, and only if a release truly removes a capability we need
 
 The host half loads `@deepseek-ai/dsh-llm` **lazily**, so a future rename or export change in
 that package can only break the distillation step, never marking, evidence or the profile.
+
+## Where the new artifacts live
+
+| File | Content | Enters context? |
+|---|---|---|
+| `<round dir>/写作包.md` (falls back to `.dsh-novel-craft/写作包/第N章 写作包.md`) | The **only** file a writing session should read | ✅ that is the point |
+| `<book root>/.dsh-novel-craft/批注/第N章.json` | Your revision notes (machine-readable) | ❌ only the annotated paragraphs, and only when you hit “Revise” |
+| `<book root>/.dsh-novel-craft/章节设定/第N章.md` | Chapter goals / must-not-happen / cast / requirements | ✅ as section ① of the pack |
+| `<book root>/.dsh-novel-craft/规则来源.json` | Rule → evidence mapping | ❌ UI lookup only |
+| `<book root>/.dsh-novel-craft/微调/` | Before/after revision doc, pending revision, original backups | ❌ human-facing |
+| `<book root>/.dsh-novel-craft/workspace.json` | Stage progress, hand-rated tension, per-chapter overrides | ❌ |
+
+## Note-driven revision: the model can only touch what you flagged
+
+Two independent guards, because this writes to your manuscript:
+
+1. **Assembly**: `applyRevision` rebuilds the chapter from “original paragraphs + rewrite table”,
+   so the model never gets a chance to touch an unannotated paragraph.
+2. **Verification**: `verifyRevision` compares paragraph by paragraph — if an unannotated
+   paragraph differs by a single character, or the paragraph count changed, write-back is **refused**.
+
+Findings are graded by whether you authorised the change: unauthorised edits are **errors**
+(blocked); a large size change on a paragraph you did annotate is a **warning** (you may well
+have written “cut this in half”) — you see the before/after and decide. The original is backed
+up to `.dsh-novel-craft/微调/原稿备份/` before any write-back, and the model's raw output is
+always archived for troubleshooting.
 
 ## Three artifacts, one rule
 

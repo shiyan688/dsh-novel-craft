@@ -152,14 +152,24 @@ const fakeWs = {
   list: { getSnapshot: () => ({ items: [{ id: 'w', path: listing.path }], recentWorkspaceId: 'w' }) },
 }
 
+/**
+ * 渲染工作台。
+ *
+ * 强制值是**按 Hook 顺序**排队的。CraftWorkbench 的状态顺序是：
+ * open, dir, state, active, busy, notice, picker, tab, distill, distilling, activeSeg, hoverSeg
+ * 之后是 0.2 新增的 6 个作品看板状态（ws / wsBusy / wsError / wsNonce / chapter / checkBusy），
+ * 再往后才是子组件（选择器）的状态——所以这里在第 12 个之后统一补 6 个占位。
+ */
 const render = (forced, props) => {
+  const shifted = [...forced.slice(0, 12), null, false, '', 0, null, false, ...forced.slice(12)]
   queue.length = 0
-  for (const value of forced) queue.push(value)
+  for (const value of shifted) queue.push(value)
   const element = slots.get('shell.overlay').render({})
   return renderToStaticMarkup(React.createElement(element.type, { ...element.props, ...props }))
 }
 
-// 父组件状态顺序：open, dir, state, active, busy, notice, picker, tab, distill, distilling, activeSeg, hoverSeg
+/** 新面板（章节/情节/全书）直接按 props 渲染，不走父组件的状态队列。 */
+const draw = (component, props) => renderToStaticMarkup(React.createElement(component, props))
 const CARDS = render([true, state.candidateDir, state, 0, false, '', false, 'cards', null, false, 3, -1], { getWs: () => fakeWs })
 const PROFILE = render([true, state.candidateDir, state, 0, false, '', false, 'profile', null, false, 0, -1], { getWs: () => fakeWs })
 const PICKER = render(
@@ -170,6 +180,84 @@ const PICKER = render(
   ],
   { getWs: () => fakeWs },
 )
+
+// ── 0.2 的三个新面板：用一份"像真作品"的看板数据渲染 ──────────────────────
+const BOARD_WS = {
+  found: true,
+  projectDir: '/path/to/你的作品/逐弈登仙',
+  name: '逐弈登仙',
+  source: 'auto',
+  runBase: '/path/to/你的作品/factory/runs/逐弈登仙',
+  people: [{ file: '宁陈.json', name: '宁陈', identity: '主角', realm: '练气三层', importance: '主角' }],
+  outline: { path: '/path/to/你的作品/逐弈登仙/大纲.md', exists: true, bytes: 2048 },
+  merged: { path: '/path/to/你的作品/逐弈登仙/逐弈登仙.txt', exists: true, bytes: 97480 },
+  totals: { chapters: 12, written: 12, chars: 31529, good: 15, bad: 15, openAnnotations: 2, packs: 3, scored: 11, avgScore: 4.2 },
+  stages: { current: 'chapter', done: 3, total: 7 },
+  state: { stage: 'chapter', stages: {}, updatedAt: '' },
+  checks: null,
+  chapters: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => ({
+    chapter: n,
+    title: `第${n}章 ` + ['血炼台上', '拜师青云', '灵根测试', '西市淘宝', '当铺交易', '夜探藏经阁', '望舒城（一）', '望舒城（二）', '猎妖（一）', '猎妖（二）', '猎妖（三）', '猎妖（四）'][n - 1],
+    file: `逐弈登仙-第${n}章.txt`,
+    chars: [3830, 2482, 3320, 3019, 2414, 2426, 2190, 3682, 2916, 2145, 2378, 727][n - 1],
+    segments: 42,
+    altFiles: [],
+    summary: { path: '', files: [], exists: n !== 12 },
+    comment: { path: '', exists: n !== 1 && n !== 12, score: n === 1 || n === 12 ? null : 4.2, count: 20 },
+    run: { dir: '', exists: n === 8 || n === 9, rounds: n === 8 ? [{ name: '候选稿', kind: 'dir', drafts: 10 }, { name: '三版重写', kind: 'dir', drafts: 3 }, { name: '盲评结论.md', kind: 'file' }] : n === 9 ? [{ name: '候选稿', kind: 'dir', drafts: 10 }] : [], drafts: n === 8 ? 13 : n === 9 ? 10 : 0 },
+    marks: { good: n === 9 ? 15 : 0, bad: n === 9 ? 15 : 0, pools: n === 9 ? 3 : 0 },
+    annotations: { open: n === 8 ? 2 : 0, resolved: n === 8 ? 1 : 0, total: n === 8 ? 3 : 0 },
+    pack: { path: '', exists: n === 9, bytes: n === 9 ? 7807 : 0, mtime: '' },
+    tension: n === 4 ? 2 : n === 5 || n === 7 || n === 8 || n === 11 ? 3 : 4,
+    override: '',
+    status: 'written',
+    findings: n === 12 ? [{ level: 'info', code: '字数失衡', message: '第 12 章明显偏短：短章会让读者觉得赶。' }] : [],
+  })),
+}
+const BOARD_CHECKS = {
+  at: '2026-09-17T01:20:00.000Z',
+  cached: false,
+  outlineMissing: false,
+  ledger: { findings: [{ level: 'warn', code: '未登记物品', chapter: 1, item: '青云令', message: '第1章出现「青云令」，台账未登记，确认后补进去或判定为误报', evidence: '' }], summary: { items: 28, chapters: 12, unmapped: 1, consumedReused: 0, unregistered: 7 } },
+  plot: {
+    findings: [
+      { level: 'info', code: '字数失衡', chapter: 12, message: '第 12 章明显偏短（727 字，全书平均 2618 字，不到一半）：短章会让读者觉得赶。', evidence: '' },
+      { level: 'warn', code: '伏笔超期', chapter: 3, message: '「青云令的来历」第 3 章埋下，已经欠了 8 章还没收：要么尽快兑现，要么明确放弃。', evidence: '' },
+    ],
+    metrics: {
+      chapterCount: 12,
+      totalChars: 31529,
+      avgChars: 2627,
+      tension: BOARD_WS.chapters.map((c) => ({ chapter: c.chapter, value: c.tension, source: c.chapter === 4 || c.chapter === 5 ? 'manual' : 'estimated', why: '估 ' + c.tension + ' 分（自动估计，不是作者标的）' })),
+      arc: { peak: 4, trough: 2, flatRuns: [] },
+      foreshadow: [{ name: '青云令的来历', plantedChapter: 3, dueChapter: null, paidChapter: null, openChapters: 8, overdue: true }],
+      density: [],
+    },
+  },
+}
+const BOARD = draw(exportsObj.__internals.ChapterBoard, { t: (k) => dict.zh[k] ?? k, ws: BOARD_WS, busy: false, onOpen: () => {}, onRefresh: () => {}, onTension: () => {}, onPickDir: () => {} })
+const PLOT = draw(exportsObj.__internals.PlotView, { t: (k) => dict.zh[k] ?? k, ws: { ...BOARD_WS, checks: BOARD_CHECKS }, busy: false, onRunChecks: () => {}, onOpenChapter: () => {} })
+const STAGE = draw(exportsObj.__internals.StageView, {
+  t: (k) => dict.zh[k] ?? k,
+  onReload: () => {},
+  ws: {
+    found: true,
+    stages: {
+      current: 'idea',
+      done: 3,
+      total: 7,
+      stages: [
+        { id: 'idea', name: '立项', order: 1, complete: false, blocked: true, note: '', artifacts: [{ path: '设定/立项.md', label: '立项（卖点/平台/字数/读者画像）', exists: false, bytes: 0, ok: false }], gate: [{ code: 'idea-brief', ok: false, level: 'error', message: '先写立项：一句话卖点、目标平台、目标字数、读者画像' }] },
+        { id: 'setting', name: '设定', order: 2, complete: false, blocked: true, note: '', artifacts: [{ path: '设定/世界观.md', label: '世界观', exists: false, bytes: 0, ok: false }, { path: '设定/道具与增益台账.md', label: '道具与增益台账', exists: true, bytes: 4096, ok: true }], gate: [{ code: 'setting-world', ok: false, level: 'error', message: '还没有 设定/世界观.md' }] },
+        { id: 'cast', name: '人物', order: 3, complete: true, blocked: false, note: '', artifacts: [{ path: '人物/主要人物列表.json', label: '主要人物列表', exists: true, bytes: 512, ok: true }], gate: [] },
+        { id: 'outline', name: '大纲', order: 4, complete: false, blocked: false, note: '', artifacts: [{ path: '大纲.md', label: '分章大纲', exists: true, bytes: 2048, ok: true }], gate: [{ code: 'outline-node-fields', ok: false, level: 'warn', message: '第 6、11 章的大纲节点缺「目标」或「冲突」' }] },
+        { id: 'chapter', name: '逐章正文', order: 5, complete: true, blocked: false, note: '', artifacts: [{ path: '*第*章*.txt', label: '章节正文', exists: true, bytes: 97480, ok: true }], gate: [{ code: 'chapter-short', ok: false, level: 'warn', message: '第 12 章不足 800 字' }] },
+        { id: 'revise', name: '修订', order: 6, complete: false, blocked: false, note: '', artifacts: [{ path: '修订清单.md', label: '修订清单', exists: false, bytes: 0, ok: false }], gate: [{ code: 'revise-open', ok: false, level: 'warn', message: '还有 2 条批注没处理（第 8 章）' }] },
+        { id: 'finish', name: '完本', order: 7, complete: true, blocked: false, note: '', artifacts: [{ path: '逐弈登仙.txt', label: '全书合并稿', exists: true, bytes: 97480, ok: true }], gate: [] },
+      ],
+    },
+  },
+})
 
 const html = `<!doctype html>
 <html lang="zh-CN">
@@ -196,18 +284,24 @@ const html = `<!doctype html>
 </head>
 <body>
 <header>
-  <h1>🎴 dsh-novel-craft · 抽卡工作台</h1>
-  <p class="note">静态快照，由真实组件渲染生成（<code>node scripts/build-preview.mjs</code>）。点页签切换三个界面。</p>
+  <h1>🎴 dsh-novel-craft · 小说创作工作台</h1>
+  <p class="note">静态快照，由真实组件渲染生成（<code>node scripts/build-preview.mjs</code>）。点页签切换六个界面。</p>
 </header>
 <div class="tabs">
   <button aria-selected="true" onclick="show(0)">🎴 抽卡（阅读视图）</button>
-  <button aria-selected="false" onclick="show(1)">📋 偏好档案</button>
-  <button aria-selected="false" onclick="show(2)">📁 目录选择器</button>
+  <button aria-selected="false" onclick="show(1)">🗂 章节看板</button>
+  <button aria-selected="false" onclick="show(2)">📈 情节体检</button>
+  <button aria-selected="false" onclick="show(3)">🧭 全书阶段</button>
+  <button aria-selected="false" onclick="show(4)">📋 偏好档案</button>
+  <button aria-selected="false" onclick="show(5)">📁 目录选择器</button>
 </div>
 <div class="pane" data-active="true">${CARDS}</div>
+<div class="pane" data-active="false">${BOARD}</div>
+<div class="pane" data-active="false">${PLOT}</div>
+<div class="pane" data-active="false">${STAGE}</div>
 <div class="pane" data-active="false">${PROFILE}</div>
 <div class="pane" data-active="false">${PICKER}</div>
-<p class="hint">预览里的按钮是静态的（没有跑浏览器）：真机上悬停/光标所在段落会浮出 👍/👎，键盘 j/k/G/B/空格/n/p 可用。</p>
+<p class="hint">预览里的按钮是静态的（没有跑浏览器）：真机上悬停/光标所在段落会浮出 👍/👎，键盘 j/k/G/B/空格/n/p 可用；单章视图里点一段按 A 就能留批注。章节/情节/全书三页用的是样例作品《逐弈登仙》的数据。</p>
 <script>
   function show(i) {
     document.querySelectorAll('.pane').forEach(function (pane, j) { pane.dataset.active = String(i === j) })

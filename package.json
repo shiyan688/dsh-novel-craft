@@ -1,13 +1,14 @@
 {
   "name": "dsh-novel-craft",
-  "description": "DSH 抽卡式作者选段工作台：把多个结构不同的候选稿摊开，作者只点哪段好哪段坏，标注沉淀成「作者偏好档案」，驱动下一轮收敛。",
-  "version": "0.1.4",
+  "description": "DSH 小说创作工作台：抽卡式作者选段 → 蒸馏成「作者偏好档案」（只有规律、不放原文），再往下走章节看板、每章写作包、批注式微调、账目与情节体检、立项到完本的阶段门禁。",
+  "version": "0.2.0",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
   "scripts": {
-    "test": "node test/static-guard.test.mjs && node test/host-api.test.mjs && node test/client-render.test.mjs",
-    "compat": "node scripts/check-dsh-compat.mjs"
+    "test": "node test/static-guard.test.mjs && node test/ledger.test.mjs && node test/plot.test.mjs && node test/pipeline.test.mjs && node test/host-api.test.mjs && node test/workbench.test.mjs && node test/client-render.test.mjs",
+    "compat": "node scripts/check-dsh-compat.mjs",
+    "test:workbench": "node test/workbench.test.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -53,7 +54,10 @@
     "writing",
     "taste-calibration",
     "creative-writing",
-    "chinese"
+    "chinese",
+    "writing-workbench",
+    "chapter-board",
+    "inline-annotations"
   ],
   "repository": {
     "type": "git",

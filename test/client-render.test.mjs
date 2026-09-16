@@ -198,10 +198,20 @@ async function loadClient() {
     dicts: () => dicts,
     slots,
     scope,
-    /** 渲染工作台（可排队强制 useState 初值）。 */
+    /**
+     * 渲染工作台（可排队强制 useState 初值）。
+     *
+     * 强制值是**按 Hook 顺序**排队的，CraftWorkbench 的 useState 一变，用例就得跟着改。
+     * 0.2 给工作台加了 6 个"作品看板"状态（ws / wsBusy / wsError / wsNonce / chapter / checkBusy），
+     * 这里统一补位：用例仍然只写原来那 11 个业务状态，后面接着写子组件的状态。
+     */
     render(forced, props) {
+      // 只在用例"写满了 CraftWorkbench 那一段、还接着写子组件状态"时才补位：
+      // 补位插在第 11 个之后，所以子组件原本收到的值一个都不会错位。
+      const shifted =
+        forced.length > 11 ? [...forced.slice(0, 11), null, false, '', 0, null, false, ...forced.slice(11)] : forced
       queue.length = 0
-      for (const value of forced) queue.push(value)
+      for (const value of shifted) queue.push(value)
       const element = slots.get('shell.overlay').render({})
       return renderToStaticMarkup(React.createElement(element.type, { ...element.props, ...props }))
     },
