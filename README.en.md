@@ -47,7 +47,18 @@ convention).
 | dsh version | What was verified |
 |---|---|
 | `0.1.0-rc.7` / packages `0.1.0-rc.8` | Development and daily use; the whole test suite runs against it |
-| `0.1.5-rc.2` (current npm `next`) | **A separate install plus an isolated DSH_HOME was booted**: the host half loaded and registered every route (`/state` → 200 with the full payload), the client half was picked up by the roster and served through the new combo-script URL (content identical to disk), and the plugin's own loopback routes are unaffected by the new token gate |
+| `0.1.2-rc.1` | Same checks (legacy regression) |
+| `0.1.5-rc.1` / `0.1.5-rc.2` | Same checks (current npm `latest` / `next`) |
+| `0.1.6-alpha.1` (current npm `alpha`) | Same checks; **this release exposed the "apply runs before services mount" trap**, which led to the fix below |
+
+Every row is produced by `node scripts/check-dsh-compat.mjs <version>`: it installs a fresh dsh
+of that version into a temp dir, wires the plugin the way a profile does, boots it with an
+isolated `DSH_HOME`, and asserts host routes, roster discovery and bundle delivery.
+
+> Note: the older `0.1.0-rc.x` / `0.1.1-rc.x` releases can no longer be installed fresh from npm
+> (metadata resolves fine, but fetching hangs — an upstream artifact issue), so the automated
+> legacy baseline is `0.1.2-rc.1`. The author's daily environment runs `0.1.0-rc.7` (CLI) /
+> `0.1.0-rc.8` (packages), which covers that generation by daily use.
 
 Known differences (harmless here, but worth knowing):
 

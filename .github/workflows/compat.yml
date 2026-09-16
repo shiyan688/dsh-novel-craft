@@ -24,8 +24,10 @@ jobs:
       fail-fast: false
       matrix:
         # dist-tag 会随时间指向新版本，所以用 tag 而不是固定版本号；
-        # legacy 一行盯住老基线，防止改动把老用户改坏。
-        dsh: [latest, next, alpha, '0.1.0-rc.7']
+        # 最后一行钉住一个老版本，防止改动把老用户改坏。
+        # 注：更老的 0.1.0-rc.x / 0.1.1-rc.x 现在已无法从 npm 全新安装（元数据都返回 200，
+        # 但解析/拉包阶段挂死，属上游制品问题），所以老基线取能装的 0.1.2-rc.1。
+        dsh: [latest, next, alpha, '0.1.2-rc.1']
     name: dsh@${{ matrix.dsh }}
     steps:
       - uses: actions/checkout@v5
