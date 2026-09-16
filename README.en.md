@@ -1,5 +1,9 @@
 # dsh-novel-craft — a gacha-style taste-calibration workbench for dsh
 
+[![npm](https://img.shields.io/npm/v/dsh-novel-craft?color=blue)](https://www.npmjs.com/package/dsh-novel-craft)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+[![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-ff7a45)](https://github.com/topics/dsh-plugin)
+
 A plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh),
 built for one problem: **an AI can be taught to avoid "AI-sounding" prose, but only real
 samples can teach it to sound like *you*.**
@@ -21,9 +25,11 @@ between the reading view, the author-profile panel and the folder picker. Regene
 ## Install
 
 ```sh
-dsh plugin --profile web add dsh-novel-craft                    # from npm
+dsh plugin --profile web add dsh-novel-craft                     # from npm
 dsh plugin --profile web add github:shiyan688/dsh-novel-craft    # or straight from GitHub
 ```
+
+Published: `dsh-novel-craft@0.1.1` ([npm page](https://www.npmjs.com/package/dsh-novel-craft)).
 
 Restart that profile once afterwards (bundle and client metadata are cached in-process).
 A 「🎴 抽卡工作台」 entry appears at the bottom of the sidebar.

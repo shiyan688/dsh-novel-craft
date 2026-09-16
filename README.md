@@ -1,5 +1,9 @@
 # dsh-novel-craft · 抽卡工作台
 
+[![npm](https://img.shields.io/npm/v/dsh-novel-craft?color=blue)](https://www.npmjs.com/package/dsh-novel-craft)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+[![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-ff7a45)](https://github.com/topics/dsh-plugin)
+
 > English: a gacha-style taste-calibration workbench for
 > [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh).
 > A batch of structurally different draft variants is laid out as continuous prose;
@@ -15,9 +19,11 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add dsh-novel-craft          # 从 npm（若已发布）
-dsh plugin --profile web add github:shiyan688/dsh-novel-craft   # 或直接从 GitHub
+dsh plugin --profile web add dsh-novel-craft                     # 从 npm
+dsh plugin --profile web add github:shiyan688/dsh-novel-craft    # 或直接从 GitHub
 ```
+
+已发布：`dsh-novel-craft@0.1.1`（[npm 页面](https://www.npmjs.com/package/dsh-novel-craft)）。
 
 装完**重启一次该 profile**（bundle 与 client 元数据在进程内缓存）。重启后侧栏底部
 出现「🎴 抽卡工作台」。
