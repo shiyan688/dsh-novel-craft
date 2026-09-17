@@ -321,6 +321,18 @@ head('宿主接口：写作包')
   ok('看板显示写作包已生成', row.pack.exists === true && row.pack.bytes > 0)
 }
 
+head('体检数据的形状（两条路由必须一致）')
+{
+  const viaCheck = await postJson('check', { refresh: true })
+  const viaWorkspace = await postJson('workspace', { deep: true })
+  const a = viaCheck.body.plot
+  const b = viaWorkspace.body.checks.plot
+  ok('check 给出 plot.metrics 与 plot.findings', a.metrics !== undefined && Array.isArray(a.findings), JSON.stringify(Object.keys(a)))
+  ok('workspace 给出同一形状的 plot', b !== undefined && b.metrics !== undefined && Array.isArray(b.findings), JSON.stringify(b === undefined ? null : Object.keys(b)))
+  ok('两条路由的 metrics 键一致', JSON.stringify(Object.keys(a.metrics).sort()) === JSON.stringify(Object.keys(b.metrics).sort()), JSON.stringify([Object.keys(a.metrics).sort(), Object.keys(b.metrics).sort()]))
+  ok('workspace 也带账目 findings', Array.isArray(viaWorkspace.body.checks.ledger.findings) && viaWorkspace.body.checks.ledger.summary !== undefined)
+}
+
 head('宿主接口：张力、体检、阶段')
 {
   const tension = await postJson('tension', { chapter: 2, value: 4 })
@@ -481,11 +493,27 @@ head('客户端面板')
     const emptyBoard = draw(I.ChapterBoard, { t, ws: { found: false, candidateDir: '', hint: '' }, busy: false, onOpen: () => {}, onRefresh: () => {}, onTension: () => {}, onPickDir: () => {} })
     ok('没认出作品根时给明确出路', emptyBoard.includes('还没认出作品目录') && emptyBoard.includes('作品根'))
 
-    const checks = (await postJson('check', {})).body
-    const plot = draw(I.PlotView, { t, ws: { ...wsBody, checks }, busy: false, onRunChecks: () => {}, onOpenChapter: () => {} })
+    // 关键：喂给面板的就是 workspace 路由**真实返回**的那份 payload。
+    // （曾经这里用过 check 路由的形状，结果形状一不一致就把情节页点崩了。）
+    const boardWs = (await postJson('workspace', { deep: true })).body
+    const plot = draw(I.PlotView, { t, ws: boardWs, busy: false, onRunChecks: () => {}, onOpenChapter: () => {} })
+    ok('情节面板能吃 workspace 的原样 payload', plot.length > 200, String(plot.length))
     ok('情节面板画出张力曲线', plot.includes('<svg') && plot.includes('<polyline'), '')
     ok('情节面板列出伏笔欠账区', plot.includes('未兑现伏笔'), '')
+    ok('情节面板列出账目体检区', plot.includes('道具与增益台账'), '')
     ok('情节面板显示章号刻度', plot.includes('>2<'), '')
+
+    // 形状退化也不许崩：缺 findings / metrics 被拍平，两种历史形状都要能渲染
+    const flat = draw(I.PlotView, {
+      t,
+      ws: { ...boardWs, checks: { at: 'x', ledger: { summary: { items: 3 } }, plot: { tension: [], foreshadow: [] } } },
+      busy: false,
+      onRunChecks: () => {},
+      onOpenChapter: () => {},
+    })
+    ok('metrics 被拍平时也能渲染', flat.includes('张力曲线'), String(flat.length))
+    const noChecks = draw(I.PlotView, { t, ws: { ...boardWs, checks: null }, busy: false, onRunChecks: () => {}, onOpenChapter: () => {} })
+    ok('没有体检数据时也能渲染', noChecks.includes('还没体检过'), '')
 
     const stage = draw(I.StageView, { t, ws: wsBody, onReload: () => {} })
     ok('阶段面板渲染七步', ['立项', '设定', '人物', '大纲', '逐章正文', '修订', '完本'].every((name) => stage.includes(name)), '')
