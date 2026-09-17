@@ -436,6 +436,7 @@ dsh-novel-craft-plugin/
 │   ├── provenance.js    #   规律 → 证据（含老档案补齐）
 │   └── llm.js           #   一次性模型调用（提炼/微调/起草共用一套行为）
 ├── test/                # 7 个测试文件（都不依赖本机路径）
+├── DEVELOPMENT.md       #   改这个仓库前先读：铁律、四条硬规矩、发布清单（不进 npm 包）
 └── LICENSE, THIRD_PARTY_NOTICES.md
 ```
 

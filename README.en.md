@@ -285,6 +285,12 @@ No test depends on any machine-specific path: the manuscript tree is generated i
 directory by `test/fixtures.mjs` and deleted afterwards. When no react pair is available the
 render suite prints a skip notice and exits 0 (`npm install`, or `DSH_REACT_ROOT=<dir>`).
 
+## Contributing
+
+Read [DEVELOPMENT.md](./DEVELOPMENT.md) first: the iron rule, the four hard rules when changing code
+(harness alignment constants, defensive field reads, `updateJsonFile` for state, path validation),
+and the release checklist. It is not part of the npm package.
+
 ## License
 
 MIT. Third-party attributions in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
