@@ -1,7 +1,7 @@
 # dsh-novel-craft
 
 [![npm](https://img.shields.io/npm/v/dsh-novel-craft?color=blue)](https://www.npmjs.com/package/dsh-novel-craft)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-ff7a45)](https://github.com/topics/dsh-plugin)
 
 If you want an AI to write prose **you** think is good, there are two obvious ways to get there, and both are exhausting.
@@ -57,7 +57,7 @@ dsh plugin --profile web add dsh-novel-craft
 
 Restart dsh once afterwards (the host half loads at startup). A 「🎴 抽卡工作台」 entry appears at the bottom of the sidebar.
 
-Not ready to install? Open [`docs/preview.html`](./docs/preview.html) in a browser — a static snapshot rendered from the real components, all seven tabs.
+Not ready to install? Open [`docs/preview.html`](./preview.html) in a browser — a static snapshot rendered from the real components, all seven tabs.
 
 ---
 
@@ -158,7 +158,7 @@ Before 0.2.0 I had three independent passes over the host half, the browser half
 
 The first two never raise an error. They just quietly lose things — which is why each now has a test standing over it.
 
-Details in [`DEVELOPMENT.md`](./DEVELOPMENT.md) (read before changing the code) and the commit history.
+Details in [`DEVELOPMENT.md`](../DEVELOPMENT.md) (read before changing the code) and the commit history.
 
 ---
 
@@ -187,7 +187,7 @@ Two traps for plugin authors: **a row's `apply` can run before services are moun
 - The insight that **reasoning effort must be turned off** for compression tasks came from Discussion [#6857](https://github.com/deepseek-ai/deepseek-harness/discussions/6857) — we hit the same wall: the model thought a great deal and left no prose at all
 - Package layout follows the community collection [linxiecoder/deepseek-harness-plugins](https://github.com/linxiecoder/deepseek-harness-plugins) so `dsh plugin add` works directly
 
-Full list and license texts: [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+Full list and license texts: [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
 ---
 

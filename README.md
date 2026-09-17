@@ -1,5 +1,7 @@
 # dsh-novel-craft
 
+> English: [docs/README.en.md](./docs/README.en.md)（只放在仓库里，不进 npm 包——否则 npm 页面会显示英文版）
+
 想让 AI 写出**你觉着好**的文字，正常做法就两条：自己写提示词，或者逐段给它写评语。
 
 两条都太累。
