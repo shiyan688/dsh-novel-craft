@@ -13,7 +13,7 @@
  */
 import http from 'node:http'
 import { existsSync } from 'node:fs'
-import { readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
@@ -510,6 +510,9 @@ head('开新章：方向 → 候选 → 合并 → 写入正文（端到端）')
 
   const again = await postJson('newchapter', { action: 'finalize', chapter, text: '第8章 改一遍\n\n新的正文。' })
   ok('再次写入会先备份原稿', again.body.backupPath !== '' && existsSync(again.body.backupPath), String(again.body.backupPath))
+  // 回归：不显式传 title 时，正文首行的副标题必须保留（曾经被压成光秃秃的「第8章」）
+  const noTitle = await postJson('newchapter', { action: 'finalize', chapter: 8, text: '第8章 望舒城（二）\n\n正文一段。\n' })
+  ok('写入正文保留首行里的副标题', (await readFile(noTitle.body.path, 'utf8')).startsWith('第8章 望舒城（二）'), (await readFile(noTitle.body.path, 'utf8')).slice(0, 24))
   ok('备份里是上一版正文', (await readFile(again.body.backupPath, 'utf8')).includes('西市的风'), '')
 
   // 真实场景：作者的标注可能落在"全局当前候选目录"那个池里（早期就是在作品根下标的），
@@ -521,6 +524,92 @@ head('开新章：方向 → 候选 → 合并 → 写入正文（端到端）')
 
   // 收尾：卡池切回原来的目录，免得影响后面的用例
   config.candidateDir = previousDir
+}
+
+head('发布前审查的回归（数据完整性）')
+{
+  // H1：大 body 的中文不能因为 chunk 边界被拆坏（readJsonBody 现在收 Buffer 再解码）
+  const cn = '宁陈盯着掌柜的手，指节因为常年拨算盘而微微变形。'.repeat(1200) // ≈ 2.8 万字
+  const payload = JSON.stringify({ action: 'finalize', chapter: 2, text: '第2章 拜师青云\n\n' + cn + '\n' })
+  const chunked = await new Promise((resolve) => {
+    let body = ''
+    const req = http.request(
+      { host: '127.0.0.1', port: server.address().port, path: '/novel-craft/api/newchapter', method: 'POST', headers: { 'content-type': 'application/json' } },
+      (res) => {
+        res.on('data', (d) => (body += d))
+        res.on('end', () => resolve({ status: res.statusCode, body }))
+      },
+    )
+    const buf = Buffer.from(payload)
+    let i = 0
+    // 65537 不是 3 的倍数：中文（3 字节）必然被切在 chunk 边界上
+    const tick = () => {
+      if (i >= buf.length) {
+        req.end()
+        return
+      }
+      const end = Math.min(i + 65537, buf.length)
+      req.write(buf.subarray(i, end))
+      i = end
+      setImmediate(tick)
+    }
+    tick()
+  })
+  ok('H1 分片请求被正确接收', chunked.status === 200, String(chunked.status) + ' ' + chunked.body.slice(0, 80))
+  const written = await readFile(join(fx.bookDir, `${bookName}-第2章.txt`), 'utf8')
+  ok('H1 大 body 的中文没有坏字', !written.includes('\uFFFD'), '坏字 ' + String((written.match(/\uFFFD/g) || []).length) + ' 个')
+
+  // H2：并发标 8 段全都要留下（宿主侧写队列 + 原子写）
+  const drafts2 = await readdir(fx.draftsDir('第2章'))
+  const pool = drafts2.find((n) => n.endsWith('.txt'))
+  config.candidateDir = fx.draftsDir('第2章')
+  await Promise.all(Array.from({ length: 8 }, (_, i) => postJson('marks', { file: pool, index: i, mark: 'good' })))
+  const markState = (await getJson('state')).body
+  ok('H2 并发标注一段都不丢', Object.keys(markState.marks[pool] || {}).length === 8, JSON.stringify(markState.marks[pool]))
+
+  // H3：以「# 作者偏好档案」开头的手写档案不能被抹掉（README 示例就是这个开头）
+  const manual = [
+    '# 作者偏好档案',
+    '',
+    '## 已验证偏好（作者喜欢什么）',
+    '',
+    '- 危险场面只写结果落到谁身上',
+    '',
+    '## 避免的写法（作者不喜欢什么）',
+    '',
+    '- 别堆叠宛如式的比喻',
+    '',
+  ].join('\n')
+  // 档案落在**候选目录**的状态目录里（抽卡工作台就在那儿读写它）
+  const profileDir = join(fx.draftsDir('第2章'), STATE_DIR_UNDER_TEST)
+  await mkdir(profileDir, { recursive: true })
+  await writeFile(join(profileDir, '作者偏好档案.md'), manual, 'utf8')
+  const evidenceRes = await postJson('evidence', {})
+  ok('H3 收录证据成功', evidenceRes.status === 200, JSON.stringify(evidenceRes.body).slice(0, 100))
+  const afterEvidence = await readFile(join(profileDir, '作者偏好档案.md'), 'utf8')
+  ok('H3 手写档案的规律还在', afterEvidence.includes('危险场面只写结果落到谁身上') && afterEvidence.includes('别堆叠宛如式的比喻'), afterEvidence.slice(0, 60))
+  ok('H3 自动块照常追加', afterEvidence.includes('auto:begin'))
+  ok('H3 手写档案被改写前留了备份', existsSync(join(profileDir, '作者偏好档案.旧版.md')))
+
+  // H4：stage save 的章号必须是整数（曾经是唯一能写出作品目录之外的越界写点）
+  const injected = await postJson('stage', { action: 'save', stage: 'chapter', chapter: '../../../../tmp/pwned', text: '第1章 x\n\ny' })
+  ok('H4 章号路径注入被拒', injected.status === 400 && String(injected.body.error).includes('整数'), JSON.stringify(injected.body))
+  ok('H4 没有在作品目录之外写出文件', !existsSync(join('/tmp', 'pwned章.txt')))
+
+  // L1：章号边界统一（0 / 负数 / 巨大）
+  for (const bad of [0, -3, 999999999]) {
+    const res = await postJson('setup', { chapter: bad, text: 'x' })
+    ok('L1 章号 ' + String(bad) + ' 被拒', res.status === 400, JSON.stringify(res.body))
+  }
+  ok('L1 没有写出 第-3章.json 这类垃圾文件', !existsSync(join(fx.bookDir, STATE_DIR_UNDER_TEST, '批注', '第-3章.json')))
+
+  // L2：project set 传文件路径要被拒
+  const fileAsDir = await postJson('project', { action: 'set', dir: join(fx.bookDir, `${bookName}-第1章.txt`) })
+  ok('L2 传文件路径被拒', fileAsDir.status === 400 && String(fileAsDir.body.error).includes('不是目录'), JSON.stringify(fileAsDir.body))
+
+  // finalize 的正文必须是字符串（否则会写出 [object Object]）
+  const notString = await postJson('newchapter', { action: 'finalize', chapter: 2, text: { a: 1 } })
+  ok('finalize 拒绝非字符串正文', notString.status === 400 && String(notString.body.error).includes('必须是字符串'), JSON.stringify(notString.body))
 }
 
 head('宿主接口：批注式微调（端到端）')
@@ -550,6 +639,45 @@ head('宿主接口：批注式微调（端到端）')
 }
 
 // ── 三、客户端面板渲染 ──────────────────────────────────────────────────────
+
+head('发布前审查的回归（微调凭据）')
+{
+  // M1：生成微调稿之后手改正文 → 采纳必须被拒（否则旧改写会嫁接到漂移后的段落上）
+  await postJson('annotation', { chapter: 3, action: 'add', seg: 1, type: 'wordy', note: '这章开头有点拖' })
+  await postJson('annotation', { chapter: 3, action: 'add', seg: 2, type: 'ai-tone', note: '这句套话' })
+  const run = await postJson('revise', { chapter: 3 })
+  ok('M1 先正常生成一版微调', run.status === 200 && run.body.diff.length >= 1, JSON.stringify(run.body.error === undefined ? run.body.diff.length : run.body))
+  // 作者在生成与采纳之间手动改了正文
+  const ch3Path = join(fx.bookDir, `${bookName}-第3章.txt`)
+  const original = await readFile(ch3Path, 'utf8')
+  await writeFile(ch3Path, original + '\n\n作者自己加的一段。\n', 'utf8')
+  const stale = await postJson('revise-apply', { chapter: 3 })
+  ok('M1 正文变过之后拒绝采纳旧改写', stale.status === 400 && String(stale.body.error).includes('指纹对不上'), JSON.stringify(stale.body))
+  // 恢复正文，重新微调应当可以采纳
+  await writeFile(ch3Path, original, 'utf8')
+  await postJson('revise', { chapter: 3 })
+  const fresh = await postJson('revise-apply', { chapter: 3 })
+  ok('M1 重新微调后可以采纳', fresh.status === 200, JSON.stringify(fresh.body.error === undefined ? fresh.body.resolved : fresh.body))
+  // M2：只结清进了本轮微调的批注——第 3 章这次带了 2 条，都应结清
+  const after = await postJson('chapter', { chapter: 3 })
+  ok('M2 本轮微调涉及的两条批注被结清', after.body.annotations.filter((a) => a.status === 'open').length === 0, JSON.stringify(after.body.annotations.map((a) => a.status)))
+
+  // M2 的另一半：超过 20 条上限时，没进微调的批注不许被标成"已处理"
+  // 用第 1 章：它在夹具里没被前面的用例改写过，段落够多（同段不同类型是不同批注）
+  const segCount = (await postJson('chapter', { chapter: 1 })).body.segments.length
+  const types = ['wordy', 'ai-tone', 'emotion']
+  for (let i = 1; i < segCount; i += 1) {
+    for (const type of types) {
+      await postJson('annotation', { chapter: 1, action: 'add', seg: i, type, note: '批量 ' + type + ' ' + String(i) })
+    }
+  }
+  const capped = await postJson('revise', { chapter: 1 })
+  ok('M2 一次微调最多带 20 条', capped.status === 200 && capped.body.used === 20 && capped.body.total > 20, JSON.stringify(capped.body.error === undefined ? { used: capped.body.used, total: capped.body.total } : capped.body))
+  await postJson('revise-apply', { chapter: 1 })
+  const ch1After = await postJson('chapter', { chapter: 1 })
+  const stillOpen = ch1After.body.annotations.filter((a) => a.status === 'open').length
+  ok('M2 没进微调的批注仍然是待处理', stillOpen > 0, '仍待处理 ' + String(stillOpen) + ' 条')
+}
 
 head('客户端面板')
 {
@@ -612,7 +740,8 @@ head('客户端面板')
     const wsBody = (await getJson('workspace')).body
     const board = draw(I.ChapterBoard, { t, ws: wsBody, busy: false, onOpen: () => {}, onRefresh: () => {}, onTension: () => {}, onPickDir: () => {} })
     ok('看板渲染出作品名', board.includes(bookName), '')
-    ok('看板渲染出章节标题', board.includes('第2章 拜师青云'), '')
+    const titleHit = wsBody.chapters.map((c) => String(c.chapter) + ':' + String(c.title)).join(' | ')
+    ok('看板渲染出章节标题', board.includes('第2章 拜师青云'), titleHit)
     ok('看板显示未处理批注', board.includes('未处理批注'), '')
     const emptyBoard = draw(I.ChapterBoard, { t, ws: { found: false, candidateDir: '', hint: '' }, busy: false, onOpen: () => {}, onRefresh: () => {}, onTension: () => {}, onPickDir: () => {} })
     ok('没认出作品根时给明确出路', emptyBoard.includes('还没认出作品目录') && emptyBoard.includes('作品根'))

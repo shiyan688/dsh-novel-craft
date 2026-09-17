@@ -12,8 +12,18 @@ The loop: lay out a batch of structurally different drafts → the author taps �
 passages (no writing reviews, no rating scales) → those marks are compressed into
 **reusable writing rules** → the next round of drafting converges on them.
 
-The rule the whole plugin is built around: **only the rules reach the model's context.**
+The rule the whole plugin is built around: **only the rules reach the writing context.**
 Raw quotes never do.
+
+> **Precise wording (no over-claiming).** "Raw text never enters the writing context" is accurate as stated:
+> when drafting, the model receives only the writing pack, which carries no chapter text except
+> **the previous chapter's ending (≤900 chars, for continuity, labelled as such in the pack)**.
+> Quotes, evidence files and notes are stored separately and are never read while drafting.
+> Three *author-initiated buttons* do send raw text to one auxiliary call, each with a hard cap:
+> ① “Distill rules” sends the marked passages (≤40 × 240 chars, ≤20KB total);
+> ② “Backfill sources” sends the quotes from the evidence file (160 chars each) alongside the rules;
+> ③ “Revise by notes” sends the annotated paragraphs (≤800 chars each) plus 80 chars of each neighbour.
+> Outside those three, no code path feeds manuscript text to a model.
 
 Since 0.2 it is also a workbench you can finish a whole book in. Each capability exists to
 serve that one core loop:
@@ -53,6 +63,25 @@ A 「🎴 抽卡工作台」 entry appears at the bottom of the sidebar.
 
 Requires the dsh **web** profile (`dsh-web-app`) with an **LLM service mounted**
 (`ctx.llm`) for the distillation step. Without one, marking and hand-editing still work.
+
+## A pre-release audit (0.2.0)
+
+Before tagging 0.2.0 I had three independent passes over the host half, the browser half, and the
+“raw text never enters the context” claim. Every high-severity finding was **reproduced first, then fixed**,
+and each repro became a regression test (`test/workbench.test.mjs`, the two “发布前审查的回归” sections).
+The four high-severity ones were all in the “corrupts the author's data” class:
+
+| # | Issue | Consequence | Now |
+|---|---|---|---|
+| H1 | `readJsonBody` concatenated chunks as strings | multi-byte CJK split across a chunk boundary → **replacement characters silently written into the manuscript** (measured: 2 per 40k-char chapter) | buffers are collected and decoded once; regression test sends 65537-byte misaligned chunks |
+| H2 | marks were read-modify-write with non-atomic writes | holding `G` to mark quickly made marks **overwrite each other** (measured: 5 concurrent marks, 1 survived); a half-written JSON counted as empty and wiped the rest | the whole read-modify-write runs in a per-file queue with temp-file + rename; test marks 8 passages concurrently and requires all 8 |
+| H3 | `composeProfile` rebuilt any profile starting with `# 作者偏好档案` | a **hand-written profile was replaced by an empty skeleton** — rules gone (the README example uses exactly that heading) | only the legacy auto-generated marker triggers a rebuild, and every rewrite leaves a `.旧版.md` backup |
+| H4 | the stage-save chapter number was unvalidated | `../../…` could **write outside the book directory** (the only escaping write in the codebase) | chapter numbers are uniformly validated as `1..10⁶` across all routes |
+
+Also fixed in the same pass: revision write-back now carries a text fingerprint (refuses to graft a stale
+rewrite onto drifted paragraphs), only annotations actually sent in the last revision are closed,
+the check cache is keyed by book, revision input is clipped per paragraph, and eight client-side reads
+that would have crashed the whole panel on one missing field.
 
 ## Version compatibility
 
