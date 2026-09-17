@@ -1,313 +1,292 @@
-# dsh-novel-craft — a novel-writing workbench that learns your taste
+# dsh-novel-craft
 
 [![npm](https://img.shields.io/npm/v/dsh-novel-craft?color=blue)](https://www.npmjs.com/package/dsh-novel-craft)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-ff7a45)](https://github.com/topics/dsh-plugin)
 
-A plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh),
-built for one problem: **an AI can be taught to avoid "AI-sounding" prose, but only real
-samples can teach it to sound like *you*.**
+If you want an AI to write prose **you** think is good, there are two obvious ways to get there, and both are exhausting.
 
-The loop: lay out a batch of structurally different drafts → the author taps 👍 / 👎 on
-passages (no writing reviews, no rating scales) → those marks are compressed into
-**reusable writing rules** → the next round of drafting converges on them.
+**Write better prompts.** "Don't be so heavy-handed" means nothing to it. So you iterate, you tune, and it works — until the next conversation, where you start over.
 
-The rule the whole plugin is built around: **only the rules reach the writing context.**
-Raw quotes never do.
+**Write critiques, paragraph by paragraph.** A round is eight to ten candidate drafts, two or three thousand characters each. Then you're supposed to say what's good. You can't. You just know "this one feels right." What you *can* squeeze out — "more delicate," "good pacing," "a bit forced" — translates back into writing as nothing at all, and by round three it has the same problem with a new set of words.
 
-> **Precise wording (no over-claiming).** "Raw text never enters the writing context" is accurate as stated:
-> when drafting, the model receives only the writing pack, which carries no chapter text except
-> **the previous chapter's ending (≤900 chars, for continuity, labelled as such in the pack)**.
-> Quotes, evidence files and notes are stored separately and are never read while drafting.
-> Three *author-initiated buttons* do send raw text to one auxiliary call, each with a hard cap:
-> ① “Distill rules” sends the marked passages (≤40 × 240 chars, ≤20KB total);
-> ② “Backfill sources” sends the quotes from the evidence file (160 chars each) alongside the rules;
-> ③ “Revise by notes” sends the annotated paragraphs (≤800 chars each) plus 80 chars of each neighbour.
-> Outside those three, no code path feeds manuscript text to a model.
+So this plugin does neither. **You just tap 👍 or 👎.**
 
-Since 0.2 it is also a workbench you can finish a whole book in. Each capability exists to
-serve that one core loop:
+Tap while you read, and the model does the rest: it turns the passages you tapped into a handful of **writing rules you can actually follow**, stored in one file. The next draft follows that file. Then you tap again, and it learns again. It gets closer to your taste every round.
 
-| | What it does |
-|---|---|
-| ✍️ New chapter | Write the next chapter: ask the model for 8–12 **scene-decision directions** (not rewordings) → draft them one at a time → pick passages in the gacha view → merge into a final draft and write it into the manuscript |
-| 🎴 Gacha + profile | You mark good/bad passages → they are distilled into rules → rules are the only taste input in context. Includes **rule → evidence lookup**: click a rule to see the very passages it came from. |
-| 🗂 Chapter board | Finds your book root automatically (wherever chapters, setting, cast and summaries live) and shows one row per chapter: chars, rounds, marks, notes, pack, reader score, tension, findings. |
-| 📦 Per-chapter writing pack | Assembles everything one chapter needs into **a single file** (chapter brief + rules + previous chapter's ending + recap + cast + ledger + plot nodes + unpaid setups + anti-AI-tone list + requirements) and reports a **context budget table**. The writing session reads only that file. |
-| 💬 Note-driven revision | Read the text, click a paragraph, press `A` to leave a note. “Revise by notes” rewrites **only annotated paragraphs — every other paragraph stays byte-identical**, verified before write-back, with a per-paragraph before/after and an automatic backup. |
-| 📈 Plot checks | Tension curve (hand-rated or estimated), outline drift, unpaid setups, length imbalance, event density, score decline — all local statistics, **raw text never enters a model context**. |
-| 🧭 Book stages | Idea → setting → cast → outline → chapters → revise → finish: artifact checklist, gates, and one-click drafting (the model writes a first pass, you edit it). |
+> Most tools are trying to make AI write *competent* prose. This one is trying to make it write what **you** think is good.
 
-It reads the directory habits you already have (`书名-第8章.txt`, `剧情/第 8 章 剧情总结.md`,
-`人物/*.json`, `设定/道具与增益台账.md`, `factory/runs/<book>/第N章/候选稿/`,
-`评论/第N章_评论数据.json`) — no reorganising required.
+---
 
-## UI preview
+## Why tapping, and not writing
 
-A static snapshot rendered from the real components (not a mock-up):
-[`docs/preview.html`](./docs/preview.html) — open it in a browser after cloning; tabs switch
-between the reading view, the author-profile panel and the folder picker. Regenerate with
-`node scripts/build-preview.mjs` after changing the components.
+Because **writing critiques is not sustainable.** You can do it ten times, not a hundred. You can manage "too forced." You cannot produce "answer the blow with one flat sentence."
+
+Tapping is different: one keystroke on a good paragraph, one on a bad one, done while you read. **Judging is easy; articulating is hard** — so don't make yourself articulate. Let the model summarise.
+
+What it summarises looks like this (this is my own file):
+
+```
+## 已验证偏好（作者喜欢什么）   what the author likes
+- 让在场群像先静默再爆响        let the crowd go silent first, then erupt
+## 避免的写法（作者不喜欢什么）  what to avoid
+- 不要用比喻堆砌来写人群的恐惧   don't pile up metaphors for a crowd's fear
+```
+
+I didn't write those. I tapped them out. Each one has an 「🔍 Evidence」 button next to it, showing which passages it was summarised from — anything you disagree with, delete it.
+
+## How it keeps learning
+
+The point is that **the file holds rules and nothing else — not one quote.**
+
+That isn't fastidiousness, it's what makes "keeps learning" actually work:
+
+- A round of raw text is thousands of characters. Two rounds and the context is full, let alone a whole book. **What you can't carry, you can't keep learning from.**
+- Compressed into rules it's a few hundred bytes (mine is 714), which rides along in **every** drafting call without costing anything.
+- And the model remembers *how to write*, not *what those sentences looked like* — the former transfers to a new chapter, the latter just gets copied.
+
+So the loop is: **tap → summarise into rules → store → draft with them → tap again → summarise again.** Every round edges closer to your taste, and the file stays small the whole time.
+
+---
 
 ## Install
 
-```sh
-dsh plugin --profile web add dsh-novel-craft                     # from npm
-dsh plugin --profile web add github:shiyan688/dsh-novel-craft    # or straight from GitHub
+```bash
+dsh plugin --profile web add dsh-novel-craft
 ```
 
-Published: `dsh-novel-craft@0.1.1` ([npm page](https://www.npmjs.com/package/dsh-novel-craft)).
+Restart dsh once afterwards (the host half loads at startup). A 「🎴 抽卡工作台」 entry appears at the bottom of the sidebar.
 
-Restart that profile once afterwards (bundle and client metadata are cached in-process).
-A 「🎴 抽卡工作台」 entry appears at the bottom of the sidebar.
+Not ready to install? Open [`docs/preview.html`](./docs/preview.html) in a browser — a static snapshot rendered from the real components, all seven tabs.
 
-Requires the dsh **web** profile (`dsh-web-app`) with an **LLM service mounted**
-(`ctx.llm`) for the distillation step. Without one, marking and hand-editing still work.
+---
 
-## A pre-release audit (0.2.0)
+## Using it
 
-Before tagging 0.2.0 I had three independent passes over the host half, the browser half, and the
-“raw text never enters the context” claim. Every high-severity finding was **reproduced first, then fixed**,
-and each repro became a regression test (`test/workbench.test.mjs`, the two “发布前审查的回归” sections).
-The four high-severity ones were all in the “corrupts the author's data” class:
+### 1. Tap one round, it learns one round
 
-| # | Issue | Consequence | Now |
-|---|---|---|---|
-| H1 | `readJsonBody` concatenated chunks as strings | multi-byte CJK split across a chunk boundary → **replacement characters silently written into the manuscript** (measured: 2 per 40k-char chapter) | buffers are collected and decoded once; regression test sends 65537-byte misaligned chunks |
-| H2 | marks were read-modify-write with non-atomic writes | holding `G` to mark quickly made marks **overwrite each other** (measured: 5 concurrent marks, 1 survived); a half-written JSON counted as empty and wiped the rest | the whole read-modify-write runs in a per-file queue with temp-file + rename; test marks 8 passages concurrently and requires all 8 |
-| H3 | `composeProfile` rebuilt any profile starting with `# 作者偏好档案` | a **hand-written profile was replaced by an empty skeleton** — rules gone (the README example uses exactly that heading) | only the legacy auto-generated marker triggers a rebuild, and every rewrite leaves a `.旧版.md` backup |
-| H4 | the stage-save chapter number was unvalidated | `../../…` could **write outside the book directory** (the only escaping write in the codebase) | chapter numbers are uniformly validated as `1..10⁶` across all routes |
+Pick a folder holding draft variants (the picker recommends folders, remembers recent ones, and browses — you never type a path). Then read, with the keyboard:
 
-Also fixed in the same pass: revision write-back now carries a text fingerprint (refuses to graft a stale
-rewrite onto drifted paragraphs), only annotations actually sent in the last revision are closed,
-the check cache is keyed by book, revision input is clipped per paragraph, and eight client-side reads
-that would have crashed the whole panel on one missing field.
+`j`/`k` paragraph · `G` good · `B` bad · `Space` clear · `n`/`p` next/previous draft
 
-## Version compatibility
+Then press 「⚗️ Distill rules」. It turns that batch of taps into lines you tick one by one; only the ticked ones enter the file. **You never have to write a sentence** — but you can always veto what it got wrong.
 
-dsh ships as **independently versioned npm packages** — in one public release the CLI may be
-`0.1.5-rc.2` while the client runtime is still `0.1.1-rc.2`. The plugin therefore pins nothing:
-peer dependencies are declared as `*` and resolved from your profile at runtime (the community
-convention).
+That's the whole ritual. One round at a time.
 
-| dsh version | What was verified |
-|---|---|
-| `0.1.0-rc.7` / packages `0.1.0-rc.8` | Development and daily use; the whole test suite runs against it |
-| `0.1.2-rc.1` | Same checks (legacy regression) |
-| `0.1.5-rc.1` / `0.1.5-rc.2` | Same checks (current npm `latest` / `next`) |
-| `0.1.6-alpha.1` (current npm `alpha`) | Same checks; **this release exposed the "apply runs before services mount" trap**, which led to the fix below |
+### 2. Write the next chapter (it writes the candidates too)
 
-Every row is produced by `node scripts/check-dsh-compat.mjs <version>`: it installs a fresh dsh
-of that version into a temp dir, wires the plugin the way a profile does, boots it with an
-isolated `DSH_HOME`, and asserts host routes, roster discovery and bundle delivery.
+「🗂 Chapters」 → 「✍️ New chapter」. Four steps.
 
-> Note: the older `0.1.0-rc.x` / `0.1.1-rc.x` releases can no longer be installed fresh from npm
-> (metadata resolves fine, but fetching hangs — an upstream artifact issue), so the automated
-> legacy baseline is `0.1.2-rc.1`. The author's daily environment runs `0.1.0-rc.7` (CLI) /
-> `0.1.0-rc.8` (packages), which covers that generation by daily use.
+**Say what the chapter must do** — number, chapter brief (goals, must-happen, must-not-happen), how many directions (10 by default).
 
-Known differences (harmless here, but worth knowing):
+**Pick directions.** You get 8–12 *scene-decision* directions. Note what they are not: ten rewordings. They change **how the story is told**:
 
-- **Newer dsh gates the web shell behind a token**: plain `http://127.0.0.1:<port>/` returns 401;
-  use the `?token=…` URL printed at startup. Plugin routes are not gated.
-- **The client bundle URL shape changed**: newer versions serve combo scripts
-  (`/plugins/??a/client.js,b/client.js&rev=…`) instead of `/plugins/<id>/client.js`.
-
-### Keeping up (automated)
-
-```sh
-node scripts/check-dsh-compat.mjs          # npm `next` by default
-node scripts/check-dsh-compat.mjs alpha    # or latest / alpha / an exact version
+```
+A 保守精修   conservative polish: keep the skeleton, tighten the details
+B 配角识货   the sidekick appraises first: the protagonist's calculation hides in his silence
+C 双层信息差 double information gap: the shopkeeper is scheming too
 ```
 
-The script installs a **fresh dsh of that version** into a temp dir, wires this plugin the way a
-profile does, boots it with an isolated `DSH_HOME`, and asserts three things: the host routes
-answer, the client half lands in the boot manifest, and the bundle is served with the right
-content. It cleans up afterwards and never touches a running instance. CI runs it weekly for
-`latest / next / alpha / 0.1.0-rc.7` (`.github/workflows/compat.yml`).
+Rename them, rewrite them, untick what you don't want — only the ticked ones get written. This step matters: ask for "ten versions" and you get ten drafts with different adjectives and identical decisions, which is no choice at all.
 
-### Version policy: one line, no per-version forks
+**Draft them, one at a time.** Each piece is saved the moment it finishes (`第13章-A-保守精修.txt`, your naming habit). You see "3/10", you can stop midway, one failure only affects that piece. Then 「🎴 Go pick passages」 switches the card pool to that fresh folder — and you're back at step one: read, tap, tap.
 
-We do **not** ship separate plugin builds per dsh version — the API surface we need has been
-stable between `0.1.0-rc.7` and `0.1.6-alpha.1`, and forking would only confuse installers.
-Instead: acquire services lazily with feature detection, prefer compatibility code over
-compatibility releases, and only if a release truly removes a capability we need, publish a
-`legacy` dist-tag line and document it here.
+**Merge into a final draft.** The passages you marked 👍 are listed in manuscript order with the reason you wrote for each. Where two candidates don't join up, it inserts a `〔needs transition〕` marker — **it does not write that for you.** Those seams are exactly where prose stops being either thing, and they're yours. Writing into the manuscript backs up the previous version.
 
-### Two traps we hit (for fellow plugin authors)
+### 3. Revise — and it can only touch what you flagged
 
-1. **A row's `apply` can run before services are mounted**: on newer dsh a *synchronous*
-   `apply` sees `ctx.get('webServer') === undefined` (verified on `0.1.6-alpha.1`). This plugin
-   therefore waits via `ctx.inject(['settings', 'webServer'], …)` with a timeout fallback.
-   Plugins that do "get, and silently return if missing" do nothing at all on newer builds.
-2. **The client bundle URL shape changed**: newer versions serve combo scripts
-   (`/plugins/??a/client.js,b/client.js&rev=…`) instead of `/plugins/<id>/client.js`. The
-   plugin does not care (the manifest supplies the URL), but hand-written test URLs will look
-   like "the plugin was not discovered".
+Click a paragraph, press `A`, leave a note (AI-tone / wordy / emotion stated outright / flat / out of character / logic-ledger / information gap / other, plus a line of your own — you *can* write here, because pointing at one spot is far cheaper than writing a general critique, and you're saying "this is wrong" rather than explaining "what I want").
 
-The host half loads `@deepseek-ai/dsh-llm` **lazily**, so a future rename or export change in
-that package can only break the distillation step, never marking, evidence or the profile.
+「Revise by notes」 rewrites **only the annotated paragraphs**. Two guards:
 
-## Writing the next chapter (the main line)
+1. The model is handed those paragraphs and nothing else — it has no access to the rest.
+2. Afterwards every paragraph is compared character by character. If an unannotated paragraph differs by one character, or the paragraph count changed, write-back is **refused**.
 
-Gacha answers “which passage is good”; **New chapter** answers “where do the candidates come from,
-and how do the picked passages become one draft”. Click “✍️ New chapter” on the chapter board:
+You see a per-paragraph before/after before accepting, and the original is backed up. The old horror story — flag three spots, get a rewritten chapter in someone else's voice — is closed off.
 
-1. **What this chapter does** — chapter number (defaults to the next one), chapter brief, how many directions (10 default), extra requirements.
-2. **Directions** — one line each, saying what that draft tests: e.g. `A conservative polish: keep the existing skeleton`,
-   `B the sidekick appraises first: the protagonist's calculation hides in his silence`. Rename, rewrite or drop any of them;
-   only the ticked ones get written.
-**How taste gets in**: both the directions call and the drafting call are fed only the **writing pack**,
-whose section ② is the author profile (rules only — the workbench's bookkeeping block is stripped).
-Drafting states it twice: the system prompt names section ② (“‘avoid’ entries are what the author has
-explicitly rejected — none of them may appear”), and the end of the user prompt restates that veto list,
-because a 3–4k-character pack buries the rules in the middle.
+### 4. See the whole book
 
-3. **Draft** — one at a time, each saved the moment it finishes to
-   `factory/runs/<book>/第N章/候选稿/第N章-A-保守精修.txt`. Progress is visible, you can stop midway, and one failure only affects that piece.
-   “Go pick passages” also switches the current card pool to that folder for you.
-4. **Merge** — lists the passages you marked 👍 (in manuscript order) with the reason you wrote for each, forming a pick table.
-   Seams between different candidates become `〔needs transition〕` markers: **the workbench never lets a model write them for you.**
-   “Write into the manuscript” normalises the text to `第N章 标题` + paragraphs and backs up the previous version.
+At 100k+ words, "where did it sag?" isn't something memory can answer. The plot tab gives you a tension curve (click 1–5 to rate it yourself; estimated points are dashed, each stating its reasoning), outline drift, unpaid setups, chapter-length imbalance, event density, score decline.
 
-Write a one-line reason for a good passage in the gacha view (a ✎ button appears once it is marked 👍);
-it lands in `筛选与合并记录.md` automatically.
+Plus a stages tab: idea → setting → cast → outline → chapters → revise → finish, with the artifacts each step needs and one-click drafting.
 
-## Where the new artifacts live
+---
 
-| File | Content | Enters context? |
+## The line I don't cross: only the rules reach the writing context
+
+This is the foundation of the "keeps learning" claim above, not a purism:
+
+- When drafting (or asking for directions, or writing candidates), the model receives one **writing pack**, which contains no chapter text except **the previous chapter's ending** (≤900 characters, required for continuity, and labelled as such inside the pack).
+- The passages you tapped, the evidence file, your notes — all of it stays local. You can go back and check any of it. Drafting never reads it.
+- So the context holds a few hundred bytes of rules plus the recap and setting it genuinely needs. That's what makes carrying your taste from round to round affordable.
+
+But I won't overstate it. Three buttons you press yourself do send raw text to one auxiliary call, each with a hard cap:
+
+| Button | What goes in | Cap |
 |---|---|---|
-| `<round dir>/写作包.md` (falls back to `.dsh-novel-craft/写作包/第N章 写作包.md`) | The **only** file a writing session should read | ✅ that is the point |
-| `<book root>/.dsh-novel-craft/批注/第N章.json` | Your revision notes (machine-readable) | ❌ only the annotated paragraphs, and only when you hit “Revise” |
-| `<book root>/.dsh-novel-craft/章节设定/第N章.md` | Chapter goals / must-not-happen / cast / requirements | ✅ as section ① of the pack |
-| `<book root>/.dsh-novel-craft/规则来源.json` | Rule → evidence mapping | ❌ UI lookup only |
-| `<book root>/.dsh-novel-craft/微调/` | Before/after revision doc, pending revision, original backups | ❌ human-facing |
-| `<book root>/.dsh-novel-craft/workspace.json` | Stage progress, hand-rated tension, per-chapter overrides | ❌ |
+| Distill rules | the passages you tapped | ≤40 × 240 chars, ≤20KB |
+| Backfill sources | quotes from the evidence file | 160 chars each |
+| Revise by notes | annotated paragraphs + 80 chars of each neighbour | 800 chars each, ≤20 per run |
 
-## Note-driven revision: the model can only touch what you flagged
+No other code path feeds manuscript text to a model. I used to write "raw text never enters a model context" — that was overstated, since "backfill sources" does send quotes and my copy didn't say so. The caps are listed now, **because a promise should be verifiable line by line.**
 
-Two independent guards, because this writes to your manuscript:
+The **writing pack** is the only file a drafting session should read. Ten sections: chapter brief · author rules · previous chapter's ending · recap (from your chapter summaries, not the manuscripts) · cast · item/buff ledger · plot nodes · unpaid setups · anti-AI-tone list · requirements.
 
-1. **Assembly**: `applyRevision` rebuilds the chapter from “original paragraphs + rewrite table”,
-   so the model never gets a chance to touch an unannotated paragraph.
-2. **Verification**: `verifyRevision` compares paragraph by paragraph — if an unannotated
-   paragraph differs by a single character, or the paragraph count changed, write-back is **refused**.
+Every section has a cap; the whole pack defaults to a 9,000-character budget. When it must trim, it cuts what can be recovered first and reports **which section was cut and by how much**, with a fixed "do not read these into context" list at the end (evidence file, marks, notes, merged manuscript).
 
-Findings are graded by whether you authorised the change: unauthorised edits are **errors**
-(blocked); a large size change on a paragraph you did annotate is a **warning** (you may well
-have written “cut this in half”) — you see the before/after and decide. The original is backed
-up to `.dsh-novel-craft/微调/原稿备份/` before any write-back, and the model's raw output is
-always archived for troubleshooting.
+---
 
-## Three artifacts, one rule
+## What it deliberately doesn't do
 
-Everything lives in `<candidate dir>/.dsh-novel-craft/` and travels with the manuscript:
+- **It won't write your prose.** It writes candidates and first passes; choosing and fixing is yours. Design premise, not modesty.
+- **It won't "read your whole book with AI."** That's the line above, so the plot checks are local string statistics — they cannot detect semantic repetition. That's the cost, and I accept it.
+- **No cover art, typesetting, publishing or scraping**, and no promise about platform review.
+- **It won't decide your pacing.** The tension curve takes your ratings; estimates are dashed lines for reference.
 
-| File | For whom | Enters model context? |
-|---|---|---|
-| `marks.json` | the workbench (machine-readable good/bad marks) | ❌ never |
-| `证据摘录.md` — raw evidence | human review + distillation input (**verbatim quotes**) | ❌ header says "do not read into a writing context" |
-| `作者偏好档案.md` — author profile | **the only file a writing session should read** (rules only) | ✅ this one |
+---
 
-```
-# 作者偏好档案
-## 已验证偏好（作者喜欢什么）
-- 让在场群像先静默再爆响
-- 危险降临先写器物异动，再写人的闷哼
-## 避免的写法（作者不喜欢什么）
-- 不要用比喻堆砌来写人群的恐惧
-- 不要在施法后补旁白解释动机
+## Is it any good?
 
-<!-- dsh-novel-craft:auto:begin -->   ← workbench bookkeeping, rewritten each distill
-- 标注：30 段（👍 15 / 👎 15），覆盖 3 篇
-- 待提炼：0 段
-- 最近提炼：2026-09-16 17:02 · deepseek-official/deepseek-v4-flash
-<!-- dsh-novel-craft:auto:end -->
-```
+**775 assertions across 7 test files**, each capability covered with real-data cases (no browser, no running dsh needed). The tests assert how an author actually uses it: the revision test requires "only the annotated paragraph changed, every other paragraph is byte-identical"; the new-chapter test requires "the previous manuscript is backed up before writing."
 
-### How rules are produced
+Before 0.2.0 I had three independent passes over the host half, the browser half, and the promise above. **Four high-severity findings were reproduced before being fixed**, and each reproduction became a regression test:
 
-1. The author taps 👍 / 👎 while reading → `marks.json`.
-2. 「⚗️ 提炼规律」 sends **only the pending** marks (≤40 passages, ≤240 chars each,
-   ≤20KB total) to **one** auxiliary model call with thinking disabled, and a system prompt
-   that forbids quoting the source text.
-3. The reply is parsed into candidates and **nothing is written until the author ticks them**.
-   Accepted lines go into the rules sections; the watermark advances so the same passage is
-   never sent twice.
+- chunked requests silently turned CJK characters in the manuscript into replacement characters (measured: 2 per 40,000-char chapter)
+- holding `G` to mark quickly made marks overwrite each other (measured: 5 concurrent marks, 1 survived)
+- a hand-written profile file was replaced by an empty skeleton, losing every rule
+- an unvalidated save path allowed writing outside the book directory
 
-The rules sections are the author's; the auto block is rewritten. Deleting a single rule is
-one click (✕), and the whole file is editable in the workbench.
+The first two never raise an error. They just quietly lose things — which is why each now has a test standing over it.
 
-## Interaction notes (from actually using it)
+Details in [`DEVELOPMENT.md`](./DEVELOPMENT.md) (read before changing the code) and the commit history.
 
-- **Reading, not reviewing.** Continuous prose layout; mark buttons only appear on the
-  cursor or hovered passage, because most paragraphs need no mark at all.
-- **Keyboard first.** `j/k` (or ↑↓) move the cursor and scroll it into view, `G`/`B` mark
-  and advance, `Space` clears, `n/p` switch drafts. Keyboard marking is idempotent.
-- **No path memorising.** The candidate-folder picker offers suggested folders (scanned for
-  folders that actually hold drafts, with counts), recents, an in-app browser, and manual
-  entry as a fallback.
-- **Waiting is visible.** The distill button shows elapsed seconds; every run archives the
-  model's raw reply to `提炼原始输出.md` so format failures are diagnosable.
+---
 
-## Companion skills (optional, recommended)
+## Compatibility
 
-The plugin lets the author mark with almost no effort; the skills tell the agent what to do
-with those marks. Both live under `skills/`:
+dsh is a set of independently versioned packages — in one public release the CLI can be `0.1.5-rc.2` while the client runtime is still `0.1.1-rc.2`. So this plugin pins nothing: peer dependencies are `*`, resolved from your profile at runtime.
 
-```sh
-cp -r skills/taste-calibration skills/novel-writing <your-project>/.dsh/skills/
+Verified working: `0.1.0-rc.7` (the author's daily driver), `0.1.2-rc.1`, `0.1.5-rc.1` (`latest`), `0.1.5-rc.2` (`next`), `0.1.6-alpha.1`.
+
+```bash
+node scripts/check-dsh-compat.mjs next    # or latest / alpha / a specific version
 ```
 
-- `taste-calibration` — the gacha-style calibration loop this plugin is built around;
-- `novel-writing` — Chinese web-fiction craft: an anti-"AI prose" checklist (six dimensions),
-  multi-POV information gaps, terminology/ledger discipline, restraint.
+It installs a real copy of that dsh in a temp directory, wires the plugin in the profile way, boots it with an isolated `DSH_HOME`, then asserts the host routes answer, the client half is in the manifest, and the half is delivered correctly. It cleans up after itself and never touches your running instance.
 
-## Tests
+> **dsh ≥ 0.1.5 needs Node 22.** On Node 20, `dsh web` exits silently — no output, no listening port — which looks exactly like "the plugin is incompatible." The compat script finds Node 22 itself and treats a boot failure on older Node as an environment problem, not a compatibility failure.
 
-```sh
-npm install   # dev + peer deps (a deployment supplies the peers from its profile)
-npm test
-```
+Two traps for plugin authors: **a row's `apply` can run before services are mounted** (`ctx.get('webServer')` is `undefined` in a synchronous `apply`; this plugin uses `ctx.inject` plus a timeout), and **the client bundle URL changed** (newer dsh serves a combined script `/plugins/??a/client.js,b/client.js&rev=…`).
 
-A fresh clone without dependencies does not dump stack traces: the static guard runs and the
-other two suites print a skip notice and exit 0.
-
-- `test/static-guard.test.mjs` — source-level guard: hooks must never follow an early
-  `return` (that bug makes the panel silently fail to open), i18n key parity, `t('key')`
-  existence.
-- `test/host-api.test.mjs` — the plugin's routes on a real loopback port: marking loop,
-  suggested folders, evidence/profile split, legacy migration, distillation with a fake LLM.
-- `test/client-render.test.mjs` — renders the client half to HTML with a matched
-  react / react-dom pair and asserts the real branches.
-
-No test depends on any machine-specific path: the manuscript tree is generated into a temp
-directory by `test/fixtures.mjs` and deleted afterwards. When no react pair is available the
-render suite prints a skip notice and exits 0 (`npm install`, or `DSH_REACT_ROOT=<dir>`).
-
-## Contributing
-
-Read [DEVELOPMENT.md](./DEVELOPMENT.md) first: the iron rule, the four hard rules when changing code
-(harness alignment constants, defensive field reads, `updateJsonFile` for state, path validation),
-and the release checklist. It is not part of the npm package.
-
-## License
-
-MIT. Third-party attributions in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+---
 
 ## Credits
 
-- The anti-"AI prose" checklist in `skills/novel-writing` is adapted from
-  [dsh-novel-solo](https://github.com/Tkingxiao/dsh-novel-solo) (MIT, Copyright (c) 2026 Tkingxiao).
-- Built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
-  (MIT, Copyright (c) 2026 DeepSeek): public slots, client services and the LLM service are used;
-  no source is copied. The one-shot auxiliary model call follows the published pattern of the
-  in-tree `dsh-session-title-llm` package.
-- Package layout follows the community collection
-  [linxiecoder/deepseek-harness-plugins](https://github.com/linxiecoder/deepseek-harness-plugins)
-  so that `dsh plugin add` works out of the box.
-- "Turn reasoning off for structured output" is documented in official Discussion
-  [#6857](https://github.com/deepseek-ai/deepseek-harness/discussions/6857) — we hit the same wall
-  on real hardware.
+- The **anti-AI-tone checklist** (six dimensions, `skills/novel-writing`) is adapted from [dsh-novel-solo](https://github.com/Tkingxiao/dsh-novel-solo) (MIT, Copyright (c) 2026 Tkingxiao)
+- Runs on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT): it uses the platform's public slots, client services and LLM service, and copies none of its source; the auxiliary model call follows the publicly visible shape of `dsh-session-title-llm`
+- The insight that **reasoning effort must be turned off** for compression tasks came from Discussion [#6857](https://github.com/deepseek-ai/deepseek-harness/discussions/6857) — we hit the same wall: the model thought a great deal and left no prose at all
+- Package layout follows the community collection [linxiecoder/deepseek-harness-plugins](https://github.com/linxiecoder/deepseek-harness-plugins) so `dsh plugin add` works directly
 
 Full list and license texts: [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+
+---
+
+<details>
+<summary><b>For the curious: where files land, the API, the layout</b></summary>
+
+### Where files land
+
+| File | What it is | Enters context? |
+|---|---|---|
+| `写作包.md` (in the round directory, else `.dsh-novel-craft/写作包/`) | the only file a drafting session should read | ✅ |
+| `.dsh-novel-craft/作者偏好档案.md` | rules only | ✅ |
+| `.dsh-novel-craft/证据摘录.md` | the raw text you tapped | ❌ only on 「Distill」/「Backfill」 |
+| `.dsh-novel-craft/marks.json` | machine-readable good/bad | ❌ same |
+| `.dsh-novel-craft/批注/第N章.json` | your revision notes | ❌ only on 「Revise」, and only the annotated paragraphs |
+| `.dsh-novel-craft/章节设定/第N章.md` | chapter goals / must-not-happen / cast | ✅ as pack section 1 |
+| `.dsh-novel-craft/规则来源.json` | rule → evidence mapping | ❌ UI lookup only |
+| `.dsh-novel-craft/微调/` | before/after, pending rewrite, backups | ❌ human-facing |
+| `.dsh-novel-craft/取用理由.json` | why each picked passage was picked | ❌ |
+| `.dsh-novel-craft/workspace.json` | stage progress, hand-rated tension | ❌ |
+| `候选稿/`, `定稿候选/`, `筛选与合并记录.md` | candidates, merged draft, pick record | ❌ (pack only, when drafting) |
+
+Marks travel with the book; the candidate directory lives in dsh settings under the `dsh-novel-craft` namespace.
+
+### How rules are produced
+
+You tap good/bad → `marks.json` → 「Update evidence」 files the raw text into `证据摘录.md` → 「Distill」 sends the pending text (≤40 × 240 chars, ≤20KB) to **one** auxiliary call whose system prompt forbids quoting and requires two sections (`喜欢：` / `避免：`) → the result does **not** enter the profile directly; you tick what you agree with, and the watermark advances so it isn't sent again.
+
+- Model route: the dsh default unless you set `distillProvider` / `distillModel` in the plugin settings
+- Don't want any model touching your text? Skip 「Distill」 and hand `证据摘录.md` to your own agent — only the rules reach the profile either way
+- The auto block (`auto:begin`/`auto:end`) is bookkeeping, rewritten each time; the rules section is yours and is never touched
+- Anything you hand-write is rendered as-is, never hidden or overwritten
+
+### Some deliberate interaction choices
+
+- **Reading, not a spreadsheet**: candidates are continuous prose (15.5px / 1.95 line-height) with a 3px colour bar on the left. Most paragraphs need no marking, so buttons surface only on the cursor or hovered paragraph
+- **Hands stay on the keyboard**: `G`/`B` advance automatically; keyboard marking is idempotent; shortcuts yield while you type in a field
+- **You always know where you are**: the footer reads "7 / 28" plus shortcuts; candidate chips show short label + length + marks in that piece, with the shared prefix (`第9章-`) stripped
+- **Rules can be rejected one at a time**: each has an ✕ (bookkeeping lines can't be deleted)
+- **First run** shows a three-step hint that disappears after the first tap
+
+### Host HTTP API (loopback only)
+
+Under `/novel-craft/api/`, serving `127.0.0.1` only; everything returns 503 when `enabled: false`. There are 23 routes; the main ones:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `state` | candidates + marks + profile + evidence info + pending count + model route |
+| POST | `marks` / `evidence` / `distill` / `rules` / `profile` | the tapping loop's writes |
+| GET | `discover` | recommended folders (with draft counts, 5s cache) |
+| GET/POST | `project` | detect / confirm the book root |
+| GET | `workspace` | chapter board (**no chapter text**) |
+| POST | `chapter` / `setup` | one chapter's detail, chapter brief |
+| POST | `annotation` | add/update/remove notes |
+| POST | `pack` | build the writing pack (`save:false` previews) |
+| POST | `revise` / `revise-apply` | generate a revision / accept it (backup first; refuses on failed verification) |
+| POST | `tension` / `check` | hand-rated tension / ledger + plot checks |
+| POST | `stage` | stage status / draft / write an artifact |
+| POST | `newchapter` | `status` / `directions` / `draft` / `merge` / `finalize` |
+| GET/POST | `rule-evidence` | rule sources; `action:'backfill'` fills old profiles |
+
+### What takes effect when
+
+- **Browser half**: read per request (`no-cache`) — **refresh the page**
+- **Host half**: loaded at dsh startup — **restart dsh**
+
+### Tests
+
+```bash
+npm install
+npm test        # 7 files, 775 assertions
+```
+
+Individual: `node test/workbench.test.mjs`, `node test/ledger.test.mjs`, `node test/plot.test.mjs`, `node test/pipeline.test.mjs`.
+
+No test depends on a machine-specific path: the book fixture is built in a temp directory by `test/fixtures.mjs`, all writes stay there, and everything is cleaned up. On a fresh clone without dependencies the render tests print "skipped" instead of a wall of red.
+
+### Layout
+
+```
+dsh-novel-craft-plugin/
+├── package.json         # dsh.bundle.patch + dsh.client.platform=web
+├── cordis.patch.yml      # inserts the plugin row into the profile composition
+├── lib/index.js         # host half: settings + 23 loopback routes + model calls
+├── lib/client.js        # browser half: the workbench (seven tabs, no JSX)
+├── lib/core/            # ten modules sharing only text.js
+│   ├── text.js          #   segmentation, safe IO, chapter parsing, write queue + atomic writes
+│   ├── workspace.js     #   book-root detection, chapter board, cast, round dirs
+│   ├── pack.js          #   writing pack + context budget
+│   ├── annotate.js      #   notes + revision assembly and character-exact verification
+│   ├── ledger.js        #   item/buff ledger parsing + checks
+│   ├── plot.js          #   tension curve + unpaid setups + plot diagnostics
+│   ├── pipeline.js      #   seven stages, artifact checks, gates, drafting prompts
+│   ├── provenance.js    #   rule → evidence
+│   ├── draft.js         #   new chapter: directions, candidates, merge, finalisation
+│   └── llm.js           #   one-shot model calls (shared by all six call sites)
+├── test/                # 7 test files
+├── DEVELOPMENT.md       # read before changing code (not in the npm package)
+└── LICENSE, THIRD_PARTY_NOTICES.md
+```
+
+</details>
