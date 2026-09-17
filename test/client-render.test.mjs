@@ -35,6 +35,24 @@ try {
 
 const CLIENT_PATH = join(import.meta.dirname, '../lib/client.js')
 
+/**
+ * CraftWorkbench 的 Hook 顺序：前 WB_HEAD 个是原有状态，中间 WB_EXTRA 是 0.2 新增的。
+ * 加状态时**只改这两个常量**，用例不用动。
+ */
+const WB_HEAD = 12
+const WB_EXTRA = [
+  null, // ws
+  false, // wsBusy
+  '', // wsError
+  0, // wsNonce
+  null, // chapter
+  false, // checkBusy
+  false, // wizard
+  -1, // reasonAt
+  '', // reasonText
+]
+const alignForced = (forced) => (forced.length > WB_HEAD ? [...forced.slice(0, WB_HEAD), ...WB_EXTRA, ...forced.slice(WB_HEAD)] : forced)
+
 // 作品目录临时造，不依赖本机路径
 const ws = await createWorkspace()
 const WORKSPACE = ws.root
@@ -201,15 +219,12 @@ async function loadClient() {
     /**
      * 渲染工作台（可排队强制 useState 初值）。
      *
-     * 强制值是**按 Hook 顺序**排队的，CraftWorkbench 的 useState 一变，用例就得跟着改。
-     * 0.2 给工作台加了 6 个"作品看板"状态（ws / wsBusy / wsError / wsNonce / chapter / checkBusy），
-     * 这里统一补位：用例仍然只写原来那 11 个业务状态，后面接着写子组件的状态。
+     * 强制值是**按 Hook 顺序**排队的，所以 CraftWorkbench 每加一个 useState，这里就要加一个占位。
+     * 用例只写"业务状态"：前 12 个（open/dir/state/active/busy/notice/picker/tab/distill/distilling/activeSeg/hoverSeg）
+     * + 子组件自己的状态；中间由 WB_EXTRA 补位。
      */
     render(forced, props) {
-      // 只在用例"写满了 CraftWorkbench 那一段、还接着写子组件状态"时才补位：
-      // 补位插在第 11 个之后，所以子组件原本收到的值一个都不会错位。
-      const shifted =
-        forced.length > 11 ? [...forced.slice(0, 11), null, false, '', 0, null, false, ...forced.slice(11)] : forced
+      const shifted = alignForced(forced)
       queue.length = 0
       for (const value of shifted) queue.push(value)
       const element = slots.get('shell.overlay').render({})

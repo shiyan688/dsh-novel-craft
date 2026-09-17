@@ -209,6 +209,16 @@ function makeCtx(config, extras = {}) {
  */
 const fakeReply = (options) => {
   const system = String(options.system ?? '')
+  if (system.includes('只给"写法方向"')) {
+    return [
+      '- A 保守精修：以最小改动保留现有骨架，只在细节处收紧',
+      '- B 配角识货：让同行配角先认出货色，主角的算计藏在他的沉默里',
+      '- C 双层信息差：让掌柜也在算计，读者比主角先看出一层',
+    ].join('\n')
+  }
+  if (system.includes('多版候选稿中的一篇')) {
+    return ['第3章 望舒城', '', '西市的风把幌子吹得直响。', '', '宁陈没有急着开口，先看掌柜的手。'].join('\n')
+  }
   if (system.includes('压成可复用的写作规律')) {
     return ['喜欢：', '- 让在场群像先静默再爆响（来自 1、2）', '避免：', '- 不要用比喻堆砌写人群的恐惧（来自 3）'].join('\n')
   }
@@ -414,6 +424,74 @@ head('规律 → 证据反查')
   ok('过短的条目当噪声丢掉', shortRules.length === 0, JSON.stringify(shortRules))
 }
 
+head('开新章：方向 → 候选 → 合并 → 写入正文（端到端）')
+{
+  const chapter = 8
+  const status0 = await postJson('newchapter', { action: 'status', chapter })
+  ok('status 给出建议章号', status0.status === 200 && status0.body.suggestedChapter === 4, JSON.stringify(status0.body.suggestedChapter))
+  ok('status 给出候选目录与现状', typeof status0.body.candidatesDir === 'string' && status0.body.candidateCount === 0, JSON.stringify({ dir: status0.body.candidatesDir, n: status0.body.candidateCount }))
+
+  await postJson('setup', { chapter, text: '# 第8章 本章设定\n\n- 目标：当铺换灵石，写出双层信息差' })
+  const dirs = await postJson('newchapter', { action: 'directions', chapter, count: 3 })
+  ok('方向生成成功', dirs.status === 200 && dirs.body.directions.length === 3, JSON.stringify(dirs.body.error === undefined ? dirs.body.directions.map((d) => d.name) : dirs.body))
+  ok('方向带字母与说明', dirs.body.directions[0].letter === 'A' && dirs.body.directions[0].detail.length > 4, JSON.stringify(dirs.body.directions[0]))
+  ok('方向用的输入是写作包', dirs.body.packChars > 100 && String(dirs.body.packPath).endsWith('.md'), JSON.stringify(dirs.body.packChars))
+  ok('方向的原始输出留档', existsSync(dirs.body.rawPath), dirs.body.rawPath)
+
+  const texts = []
+  for (let i = 0; i < 3; i += 1) {
+    const one = await postJson('newchapter', { action: 'draft', chapter, index: i, direction: dirs.body.directions[i], directions: dirs.body.directions })
+    ok('候选第 ' + (i + 1) + ' 篇落盘', one.status === 200 && one.body.chars > 10 && existsSync(one.body.path), JSON.stringify(one.body.error === undefined ? one.body.file : one.body))
+    texts.push(one.body)
+  }
+  ok('文件名是"第N章-字母-方向名"', texts[0].file === '第8章-A-保守精修.txt', texts[0].file)
+  ok('候选数量与方向一致', (await readdir(texts[0].path.replace(/\/[^/]+$/, ''))).filter((n) => n.endsWith('.txt')).length === 3)
+  ok('正文里没有模型的开场白', !String((await readFile(texts[0].path, 'utf8'))).includes('好的，以下是'), '')
+
+  // 模拟作者点「去抽卡选段」：当前卡池切到刚写出来的那个目录（工作台就是这么做的）
+  const previousDir = config.candidateDir
+  config.candidateDir = status0.body.candidatesDir
+  const picks = []
+  for (const item of texts) {
+    const body = await readFile(item.path, 'utf8')
+    picks.push({ file: item.file, index: 0, text: coreText.splitSegments(body)[0], reason: '标题够素' })
+    picks.push({ file: item.file, index: 1, text: coreText.splitSegments(body)[1] || '第二段', reason: '开场不解释' })
+  }
+  // 用真实标注接口把好段标上（工作台就是这么发的：标 👍 的同时写一句取用原因）
+  for (const pick of picks) {
+    await postJson('marks', { file: pick.file, index: pick.index, mark: 'good', reason: pick.reason })
+  }
+  const merged = await postJson('newchapter', { action: 'merge', chapter, versionName: '合并稿' })
+  ok('合并成功并生成取用记录', merged.status === 200 && merged.body.rows.length === picks.length, JSON.stringify(merged.body.error === undefined ? { rows: merged.body.rows.length, want: picks.length, gaps: merged.body.gaps } : merged.body))
+  ok('取用原因进了记录', merged.body.mergeDoc.includes('标题够素') && merged.body.mergeDoc.includes('开场不解释'), '')
+  ok('来源列是候选稿名（去掉扩展名）', merged.body.rows[0].source === '第8章-A-保守精修', merged.body.rows[0].source)
+  ok('取用记录写成表格', merged.body.mergeDoc.includes('| 来源 | 取用内容 | 取用原因 |'), '')
+  ok('跨稿衔接处写成缺口标记', merged.body.gaps > 0 && merged.body.text.includes('此处需过渡'), String(merged.body.gaps))
+  ok('合并稿落到定稿候选目录', existsSync(merged.body.versionPath) && String(merged.body.versionPath).includes('定稿候选'), merged.body.versionPath)
+  ok('合并稿不包含任何未被选中的内容', merged.body.rows.every((row) => merged.body.text.includes(row.preview.slice(0, 8))), '')
+
+  const final = await postJson('newchapter', { action: 'finalize', chapter, text: merged.body.text })
+  ok('写入正文成功', final.status === 200 && existsSync(final.body.path), JSON.stringify(final.body.error === undefined ? final.body.path : final.body))
+  const written = await readFile(final.body.path, 'utf8')
+  ok('正文首行是规范标题', written.startsWith('第8章'), written.slice(0, 20))
+  const chapterNow = await postJson('chapter', { chapter })
+  ok('看板能看到新写的这一章', chapterNow.status === 200 && chapterNow.body.chars > 10, String(chapterNow.body.chars))
+
+  const again = await postJson('newchapter', { action: 'finalize', chapter, text: '第8章 改一遍\n\n新的正文。' })
+  ok('再次写入会先备份原稿', again.body.backupPath !== '' && existsSync(again.body.backupPath), String(again.body.backupPath))
+  ok('备份里是上一版正文', (await readFile(again.body.backupPath, 'utf8')).includes('西市的风'), '')
+
+  // 真实场景：作者的标注可能落在"全局当前候选目录"那个池里（早期就是在作品根下标的），
+  // 合并要能同时看两个池，取选段更多的那个。
+  config.candidateDir = previousDir // 回到第2章那个池
+  const crossPool = await postJson('newchapter', { action: 'merge', chapter, versionName: '跨池测试' })
+  ok('两个候选池都能被合并看到', crossPool.status === 200 && crossPool.body.rows.length >= picks.length, JSON.stringify(crossPool.body.error === undefined ? { rows: crossPool.body.rows.length, want: picks.length } : crossPool.body))
+  ok('合并用的还是本章自己的池', crossPool.body.rows.every((row) => row.source.startsWith('第8章-')), JSON.stringify(crossPool.body.rows.map((r) => r.source)))
+
+  // 收尾：卡池切回原来的目录，免得影响后面的用例
+  config.candidateDir = previousDir
+}
+
 head('宿主接口：批注式微调（端到端）')
 {
   const before = await readFile(join(fx.bookDir, `${bookName}-第2章.txt`), 'utf8')
@@ -450,6 +528,17 @@ head('客户端面板')
   } else {
     const React = requireFrom('react')
     const { renderToStaticMarkup } = requireFrom('react-dom/server')
+    // useState 排队替身：把组件摆到指定状态再渲染（预览脚本用的是同一招）
+    const queue = []
+    const SKIP = Symbol('skip')
+    const ReactStub = Object.create(React)
+    Object.defineProperty(ReactStub, 'useState', {
+      enumerable: true,
+      value: (init) => {
+        const next = queue.length > 0 ? queue.shift() : SKIP
+        return React.useState(next === SKIP ? init : next)
+      },
+    })
     let captured = null
     globalThis.window = {
       __ModuleLoader__: { load: (definition) => (captured = definition) },
@@ -457,7 +546,7 @@ head('客户端面板')
     }
     await import(pathToFileURL(join(import.meta.dirname, '../lib/client.js')).href)
     const exportsObj = captured.factory((name) => {
-      if (name === 'react') return React
+      if (name === 'react') return ReactStub
       throw new Error('client.js 出现了未预期的依赖：' + name)
     })
     const dicts = { zh: {}, en: {} }
@@ -481,7 +570,11 @@ head('客户端面板')
     })
     const t = (key) => (dicts.zh[key] !== undefined ? dicts.zh[key] : key)
     const I = exportsObj.__internals
-    const draw = (component, props) => renderToStaticMarkup(React.createElement(component, props))
+    const draw = (component, props, forced) => {
+      queue.length = 0
+      for (const value of forced === undefined ? [] : forced) queue.push(value)
+      return renderToStaticMarkup(React.createElement(component, props))
+    }
 
     // 先留一条新批注：微调那一段已经把上一批批注结清了，看板要断言的是"有未处理批注"的状态
     await postJson('annotation', { chapter: 3, action: 'add', seg: 1, type: 'wordy', note: '这章开头有点拖' })
@@ -527,6 +620,38 @@ head('客户端面板')
     ok('微调面板给出采纳按钮', revision.includes('采纳并写回正文'), '')
 
     const pack = draw(I.PackPanel, { t, pack: (await postJson('pack', { chapter: 2, save: false })).body, busy: false, copied: false, onBuild: () => {}, onCopied: () => {} })
+
+    // 开新章向导：① 起点 ② 方向清单 ④ 合并（把组件摆到各步再渲染）
+    const wizardProps = { t, chapter: 8, onBack: () => {}, onDone: () => {}, onGoCards: () => {} }
+    const w1 = draw(I.NewChapterWizard, wizardProps)
+    ok('向导第一步问"这一章要写什么"', w1.includes('这一章要写什么') && w1.includes('本章设定'), '')
+    const DIRS = [
+      { index: 0, letter: 'A', name: '保守精修', detail: '以最小改动保留现有骨架' },
+      { index: 1, letter: 'B', name: '配角识货', detail: '让同行配角先认出货色' },
+    ]
+    const wStatus = { chapter: 8, suggestedChapter: 8, candidatesDir: '/tmp/x', candidateCount: 0, setup: { path: '', exists: false, text: '模板' }, outlineNode: null, picks: [] }
+    const w2 = draw(I.NewChapterWizard, wizardProps, [8, 'directions', wStatus, '模板', 10, '', DIRS, { 0: true, 1: true }, '', '', [], { done: 0, total: 0, current: '' }, null, '合并稿', ''])
+    ok('向导第二步列出方向并可勾选', w2.includes('保守精修') && w2.includes('配角识货') && w2.includes('开始写候选'), '')
+    const mergeRows = [{ file: '第8章-A-保守精修.txt', index: 1, source: '第8章-A-保守精修', reason: '以小场景代替概述', preview: '木匣与断符的具体还价', chars: 40 }]
+    const w3 = draw(I.NewChapterWizard, wizardProps, [
+      8,
+      'merge',
+      wStatus,
+      '模板',
+      10,
+      '',
+      DIRS,
+      {},
+      '',
+      '',
+      [],
+      { done: 0, total: 0, current: '' },
+      { text: '第8章 正文\n\n〔此处需过渡〕\n\n下一段', rows: mergeRows, picks: [{ file: '第8章-A-保守精修.txt', index: 1, text: '木匣与断符的具体还价', reason: '以小场景代替概述' }], gaps: 1, chars: 20, versionPath: '/tmp/v.txt', mergeDocPath: '/tmp/记录.md', mergeDoc: '' },
+      '合并稿',
+      '第8章 正文',
+    ])
+    ok('向导第四步给出取用段落表', w3.includes('第8章-A-保守精修') && w3.includes('以小场景代替概述'), '')
+    ok('向导第四步能写入正文并提示缺口', w3.includes('写入正文') && w3.includes('处缺口'), '')
     ok('写作包面板给出分节预算', pack.includes('上下文预算') && pack.includes('本章任务（作者指定）'), '')
   }
 }

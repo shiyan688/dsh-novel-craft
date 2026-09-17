@@ -20,6 +20,7 @@ serve that one core loop:
 
 | | What it does |
 |---|---|
+| ✍️ New chapter | Write the next chapter: ask the model for 8–12 **scene-decision directions** (not rewordings) → draft them one at a time → pick passages in the gacha view → merge into a final draft and write it into the manuscript |
 | 🎴 Gacha + profile | You mark good/bad passages → they are distilled into rules → rules are the only taste input in context. Includes **rule → evidence lookup**: click a rule to see the very passages it came from. |
 | 🗂 Chapter board | Finds your book root automatically (wherever chapters, setting, cast and summaries live) and shows one row per chapter: chars, rounds, marks, notes, pack, reader score, tension, findings. |
 | 📦 Per-chapter writing pack | Assembles everything one chapter needs into **a single file** (chapter brief + rules + previous chapter's ending + recap + cast + ledger + plot nodes + unpaid setups + anti-AI-tone list + requirements) and reports a **context budget table**. The writing session reads only that file. |
@@ -117,6 +118,25 @@ compatibility releases, and only if a release truly removes a capability we need
 
 The host half loads `@deepseek-ai/dsh-llm` **lazily**, so a future rename or export change in
 that package can only break the distillation step, never marking, evidence or the profile.
+
+## Writing the next chapter (the main line)
+
+Gacha answers “which passage is good”; **New chapter** answers “where do the candidates come from,
+and how do the picked passages become one draft”. Click “✍️ New chapter” on the chapter board:
+
+1. **What this chapter does** — chapter number (defaults to the next one), chapter brief, how many directions (10 default), extra requirements.
+2. **Directions** — one line each, saying what that draft tests: e.g. `A conservative polish: keep the existing skeleton`,
+   `B the sidekick appraises first: the protagonist's calculation hides in his silence`. Rename, rewrite or drop any of them;
+   only the ticked ones get written.
+3. **Draft** — one at a time, each saved the moment it finishes to
+   `factory/runs/<book>/第N章/候选稿/第N章-A-保守精修.txt`. Progress is visible, you can stop midway, and one failure only affects that piece.
+   “Go pick passages” also switches the current card pool to that folder for you.
+4. **Merge** — lists the passages you marked 👍 (in manuscript order) with the reason you wrote for each, forming a pick table.
+   Seams between different candidates become `〔needs transition〕` markers: **the workbench never lets a model write them for you.**
+   “Write into the manuscript” normalises the text to `第N章 标题` + paragraphs and backs up the previous version.
+
+Write a one-line reason for a good passage in the gacha view (a ✎ button appears once it is marked 👍);
+it lands in `筛选与合并记录.md` automatically.
 
 ## Where the new artifacts live
 

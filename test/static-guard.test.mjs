@@ -39,7 +39,7 @@ const source = await readFile(CLIENT_PATH, 'utf8')
 const lines = source.split('\n')
 
 head('Hook 顺序（重点：不许出现在提前 return 之后）')
-for (const component of ['CraftEntry', 'CraftWorkbench', 'DirPicker', 'ProfileView', 'ChapterDetail', 'StageView']) {
+for (const component of ['CraftEntry', 'CraftWorkbench', 'DirPicker', 'ProfileView', 'ChapterDetail', 'StageView', 'NewChapterWizard']) {
   const body = bodyOf(lines, component)
   ok(component + ' 存在', body !== null)
   if (body === null) continue

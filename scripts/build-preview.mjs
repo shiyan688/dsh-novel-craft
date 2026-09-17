@@ -153,15 +153,17 @@ const fakeWs = {
 }
 
 /**
- * 渲染工作台。
- *
- * 强制值是**按 Hook 顺序**排队的。CraftWorkbench 的状态顺序是：
- * open, dir, state, active, busy, notice, picker, tab, distill, distilling, activeSeg, hoverSeg
- * 之后是 0.2 新增的 6 个作品看板状态（ws / wsBusy / wsError / wsNonce / chapter / checkBusy），
- * 再往后才是子组件（选择器）的状态——所以这里在第 12 个之后统一补 6 个占位。
+ * CraftWorkbench 的 Hook 顺序：前 12 个是原有状态（open/dir/state/active/busy/notice/picker/
+ * tab/distill/distilling/activeSeg/hoverSeg），中间 9 个是 0.2 新增的（ws/wsBusy/wsError/
+ * wsNonce/chapter/checkBusy/wizard/reasonAt/reasonText），之后才是子组件的状态。
+ * 加状态时只改这两个常量。
  */
+const WB_HEAD = 12
+const WB_EXTRA = [null, false, '', 0, null, false, false, -1, '']
+
+/** 渲染工作台（强制值按 Hook 顺序排队，中间补位）。 */
 const render = (forced, props) => {
-  const shifted = [...forced.slice(0, 12), null, false, '', 0, null, false, ...forced.slice(12)]
+  const shifted = [...forced.slice(0, WB_HEAD), ...WB_EXTRA, ...forced.slice(WB_HEAD)]
   queue.length = 0
   for (const value of shifted) queue.push(value)
   const element = slots.get('shell.overlay').render({})
@@ -259,6 +261,43 @@ const STAGE = draw(exportsObj.__internals.StageView, {
   },
 })
 
+// ── 开新章向导：摆到"方向"这一步（这是这批新能力里最要紧的一屏）──────────
+const DIRECTIONS = [
+  { index: 0, letter: 'A', name: '保守精修', detail: '以最小改动保留现有骨架，只在细节处收紧，给作者一个基准版' },
+  { index: 1, letter: 'B', name: '配角识货', detail: '让同行配角先认出货色，主角的算计藏在他的沉默里' },
+  { index: 2, letter: 'C', name: '双层信息差', detail: '让当铺掌柜也在算计，读者比主角先看出一层' },
+  { index: 3, letter: 'D', name: '对手戏前置', detail: '把议价过程写成可见的对手行为，价格一寸一寸推上去' },
+  { index: 4, letter: 'E', name: '轻喜剧动作', detail: '笑点来自人物当下的算计，不额外安排悬疑' },
+  { index: 5, letter: 'F', name: '生活流', detail: '用市井细节承担信息，账目只在器物上体现' },
+  { index: 6, letter: 'G', name: '最少卡片', detail: '用一段话收束抽卡结果，避免正文变成面板日志' },
+]
+const WIZARD_STATUS = {
+  chapter: 13,
+  suggestedChapter: 13,
+  candidatesDir: '/path/to/你的作品/factory/runs/逐弈登仙/第13章/候选稿',
+  candidateCount: 0,
+  setup: { path: '', exists: true, text: '# 第13章 本章设定\n\n## 本章目标（必须发生）\n- 宁陈第一次动用追踪缕的因果牵引\n- 让李大可察觉自己被盯着，但不知道是谁\n' },
+  outlineNode: { chapter: 13, goal: '第一次主动用信息差设局', conflict: '李大可开始反查', turn: '追踪缕暴露了一角', plant: [], payoff: [] },
+  picks: [],
+}
+const WIZARD = (() => {
+  queue.length = 0
+  const picked = {}
+  for (const d of DIRECTIONS) picked[d.index] = d.index !== 5
+  for (const value of [13, 'directions', WIZARD_STATUS, WIZARD_STATUS.setup.text, 10, '', DIRECTIONS, picked, '', '', [], { done: 0, total: 0, current: '' }, null, '合并稿', '']) {
+    queue.push(value)
+  }
+  return renderToStaticMarkup(
+    React.createElement(exportsObj.__internals.NewChapterWizard, {
+      t: (k) => dict.zh[k] ?? k,
+      chapter: 13,
+      onBack: () => {},
+      onDone: () => {},
+      onGoCards: () => {},
+    }),
+  )
+})()
+
 const html = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -285,10 +324,11 @@ const html = `<!doctype html>
 <body>
 <header>
   <h1>🎴 dsh-novel-craft · 小说创作工作台</h1>
-  <p class="note">静态快照，由真实组件渲染生成（<code>node scripts/build-preview.mjs</code>）。点页签切换六个界面。</p>
+  <p class="note">静态快照，由真实组件渲染生成（<code>node scripts/build-preview.mjs</code>）。点页签切换七个界面。</p>
 </header>
 <div class="tabs">
   <button aria-selected="true" onclick="show(0)">🎴 抽卡（阅读视图）</button>
+  <button aria-selected="false" onclick="show(6)">✍️ 开新章向导</button>
   <button aria-selected="false" onclick="show(1)">🗂 章节看板</button>
   <button aria-selected="false" onclick="show(2)">📈 情节体检</button>
   <button aria-selected="false" onclick="show(3)">🧭 全书阶段</button>
@@ -301,6 +341,7 @@ const html = `<!doctype html>
 <div class="pane" data-active="false">${STAGE}</div>
 <div class="pane" data-active="false">${PROFILE}</div>
 <div class="pane" data-active="false">${PICKER}</div>
+<div class="pane" data-active="false">${WIZARD}</div>
 <p class="hint">预览里的按钮是静态的（没有跑浏览器）：真机上悬停/光标所在段落会浮出 👍/👎，键盘 j/k/G/B/空格/n/p 可用；单章视图里点一段按 A 就能留批注。章节/情节/全书三页用的是样例作品《逐弈登仙》的数据。</p>
 <script>
   function show(i) {
