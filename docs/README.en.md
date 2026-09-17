@@ -4,27 +4,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-ff7a45)](https://github.com/topics/dsh-plugin)
 
-If you want an AI to write prose **you** think is good, there are two obvious ways to get there, and both are exhausting.
+**Purpose: make an AI write prose that sounds right to *you*.**
 
-**Write better prompts.** "Don't be so heavy-handed" means nothing to it. So you iterate, you tune, and it works — until the next conversation, where you start over.
+**Method: you only tap 👍 or 👎 — the model does the summarising.**
 
-**Write critiques, paragraph by paragraph.** A round is eight to ten candidate drafts, two or three thousand characters each. Then you're supposed to say what's good. You can't. You just know "this one feels right." What you *can* squeeze out — "more delicate," "good pacing," "a bit forced" — translates back into writing as nothing at all, and by round three it has the same problem with a new set of words.
-
-So this plugin does neither. **You just tap 👍 or 👎.**
-
-Tap while you read, and the model does the rest: it turns the passages you tapped into a handful of **writing rules you can actually follow**, stored in one file. The next draft follows that file. Then you tap again, and it learns again. It gets closer to your taste every round.
-
-> Most tools are trying to make AI write *competent* prose. This one is trying to make it write what **you** think is good.
-
----
-
-## Why tapping, and not writing
-
-Because **writing critiques is not sustainable.** You can do it ten times, not a hundred. You can manage "too forced." You cannot produce "answer the blow with one flat sentence."
-
-Tapping is different: one keystroke on a good paragraph, one on a bad one, done while you read. **Judging is easy; articulating is hard** — so don't make yourself articulate. Let the model summarise.
-
-What it summarises looks like this (this is my own file):
+Tap while you read a round of candidate drafts. Then let the model turn those taps into a handful of lines you can actually follow, stored in one file. The next draft carries that file; you tap again, it summarises again. What it produces looks like this (my own file):
 
 ```
 ## 已验证偏好（作者喜欢什么）   what the author likes
@@ -33,19 +17,19 @@ What it summarises looks like this (this is my own file):
 - 不要用比喻堆砌来写人群的恐惧   don't pile up metaphors for a crowd's fear
 ```
 
-I didn't write those. I tapped them out. Each one has an 「🔍 Evidence」 button next to it, showing which passages it was summarised from — anything you disagree with, delete it.
+I didn't write those. I tapped them out. Each one has an 「🔍 Evidence」 button showing which passages it was summarised from — anything you disagree with, delete it.
 
-## How it keeps learning
+**The file holds rules and nothing else — not one quote.** That is what makes the method work at all: a round of raw text is thousands of characters, and two rounds fill the context. Rules are a few hundred bytes (mine is 714), so they ride along in every drafting call — and the model remembers *how to write*, not *what those sentences looked like*. The former transfers to a new chapter; the latter just gets copied. So it can keep going round after round, **getting closer to your taste each time**.
 
-The point is that **the file holds rules and nothing else — not one quote.**
+**Why we built it**
 
-That isn't fastidiousness, it's what makes "keeps learning" actually work:
+Because both of the obvious routes are exhausting.
 
-- A round of raw text is thousands of characters. Two rounds and the context is full, let alone a whole book. **What you can't carry, you can't keep learning from.**
-- Compressed into rules it's a few hundred bytes (mine is 714), which rides along in **every** drafting call without costing anything.
-- And the model remembers *how to write*, not *what those sentences looked like* — the former transfers to a new chapter, the latter just gets copied.
+**Write better prompts.** "Don't be so heavy-handed" means nothing to it. So you iterate, you tune — and the next conversation, you start over.
 
-So the loop is: **tap → summarise into rules → store → draft with them → tap again → summarise again.** Every round edges closer to your taste, and the file stays small the whole time.
+**Write critiques, paragraph by paragraph.** A round is eight to ten drafts, two or three thousand characters each. Then you're supposed to say what's good. You can't; you just know "this one feels right." What you can squeeze out — "more delicate," "good pacing," "a bit forced" — translates back into writing as nothing at all, and by round three it has the same problem in new words.
+
+The short version: **judging is easy, articulating is hard.** Tapping takes a second; explaining what you want, you can do ten times, not a hundred. So don't make yourself articulate — let the model summarise.
 
 ---
 
