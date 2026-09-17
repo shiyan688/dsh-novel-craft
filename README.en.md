@@ -128,6 +128,12 @@ and how do the picked passages become one draft”. Click “✍️ New chapter�
 2. **Directions** — one line each, saying what that draft tests: e.g. `A conservative polish: keep the existing skeleton`,
    `B the sidekick appraises first: the protagonist's calculation hides in his silence`. Rename, rewrite or drop any of them;
    only the ticked ones get written.
+**How taste gets in**: both the directions call and the drafting call are fed only the **writing pack**,
+whose section ② is the author profile (rules only — the workbench's bookkeeping block is stripped).
+Drafting states it twice: the system prompt names section ② (“‘avoid’ entries are what the author has
+explicitly rejected — none of them may appear”), and the end of the user prompt restates that veto list,
+because a 3–4k-character pack buries the rules in the middle.
+
 3. **Draft** — one at a time, each saved the moment it finishes to
    `factory/runs/<book>/第N章/候选稿/第N章-A-保守精修.txt`. Progress is visible, you can stop midway, and one failure only affects that piece.
    “Go pick passages” also switches the current card pool to that folder for you.

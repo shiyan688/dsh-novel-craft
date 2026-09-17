@@ -401,7 +401,20 @@ head('规律 → 证据反查')
   // 老档案补齐：模型给映射 → by:'model'；模型不给 → 本地匹配且标成推测
   await writeFile(
     join(fx.bookDir, STATE_DIR_UNDER_TEST, '作者偏好档案.md'),
-    ['# 作者偏好档案', '', '## 已验证偏好（作者喜欢什么）', '', '- 让在场群像先静默再爆响', '- 一条全新的、还没有来源的规律', ''].join('\n'),
+    [
+      '# 作者偏好档案',
+      '',
+      '## 已验证偏好（作者喜欢什么）',
+      '',
+      '- 让在场群像先静默再爆响',
+      '- 一条全新的、还没有来源的规律',
+      '',
+      '## 避免的写法（作者不喜欢什么）',
+      '',
+      '- 不要用比喻堆砌来写人群的恐惧',
+      '- 不要在施法后补旁白解释动机',
+      '',
+    ].join('\n'),
     'utf8',
   )
   const filled = await postJson('rule-evidence', { action: 'backfill' })
@@ -432,12 +445,24 @@ head('开新章：方向 → 候选 → 合并 → 写入正文（端到端）')
   ok('status 给出候选目录与现状', typeof status0.body.candidatesDir === 'string' && status0.body.candidateCount === 0, JSON.stringify({ dir: status0.body.candidatesDir, n: status0.body.candidateCount }))
 
   await postJson('setup', { chapter, text: '# 第8章 本章设定\n\n- 目标：当铺换灵石，写出双层信息差' })
+  const sinkBefore = llmSink.length
   const dirs = await postJson('newchapter', { action: 'directions', chapter, count: 3 })
   ok('方向生成成功', dirs.status === 200 && dirs.body.directions.length === 3, JSON.stringify(dirs.body.error === undefined ? dirs.body.directions.map((d) => d.name) : dirs.body))
   ok('方向带字母与说明', dirs.body.directions[0].letter === 'A' && dirs.body.directions[0].detail.length > 4, JSON.stringify(dirs.body.directions[0]))
   ok('方向用的输入是写作包', dirs.body.packChars > 100 && String(dirs.body.packPath).endsWith('.md'), JSON.stringify(dirs.body.packChars))
+
+  // 偏好档案必须进提示词（这是本插件的铁律：口味输入只来自规律）
+  const promptText = (options) =>
+    String(options.system ?? '') +
+    '\n' +
+    String((options.messages ?? []).map((m) => (m.content ?? []).map((c) => c.text ?? '').join('')).join('\n'))
+  const directionPrompts = llmSink.slice(sinkBefore).map(promptText)
+  ok('要方向的提示词里有偏好档案', directionPrompts.every((x) => x.includes('作者偏好档案') && x.includes('已验证偏好') && x.includes('避免的写法')), String(directionPrompts.length))
+  ok('要方向的提示词点明了"以作者喜欢的写法为准"', directionPrompts.every((x) => x.includes('已经验证过喜欢')), '')
+  ok('提示词里没有把自动块（标注账目）带进去', directionPrompts.every((x) => !x.includes('auto:begin')), '')
   ok('方向的原始输出留档', existsSync(dirs.body.rawPath), dirs.body.rawPath)
 
+  const draftSinkBefore = llmSink.length
   const texts = []
   for (let i = 0; i < 3; i += 1) {
     const one = await postJson('newchapter', { action: 'draft', chapter, index: i, direction: dirs.body.directions[i], directions: dirs.body.directions })
@@ -447,6 +472,12 @@ head('开新章：方向 → 候选 → 合并 → 写入正文（端到端）')
   ok('文件名是"第N章-字母-方向名"', texts[0].file === '第8章-A-保守精修.txt', texts[0].file)
   ok('候选数量与方向一致', (await readdir(texts[0].path.replace(/\/[^/]+$/, ''))).filter((n) => n.endsWith('.txt')).length === 3)
   ok('正文里没有模型的开场白', !String((await readFile(texts[0].path, 'utf8'))).includes('好的，以下是'), '')
+
+  const draftPrompts = llmSink.slice(draftSinkBefore).map(promptText)
+  ok('写候选的提示词里有偏好档案', draftPrompts.length === 3 && draftPrompts.every((x) => x.includes('作者偏好档案') && x.includes('避免的写法')), String(draftPrompts.length))
+  ok('写候选的系统提示点名了第 ② 节', draftPrompts.every((x) => x.includes('写作包第 ② 节就是')), '')
+  ok('写候选的提示词末尾重申了否决清单', draftPrompts.every((x) => x.includes('作者明确否决过的写法')), '')
+  ok('否决清单确实落在提示词末尾（近因）', draftPrompts.every((x) => x.length - x.indexOf('作者明确否决过的写法') < 900), '')
 
   // 模拟作者点「去抽卡选段」：当前卡池切到刚写出来的那个目录（工作台就是这么做的）
   const previousDir = config.candidateDir
