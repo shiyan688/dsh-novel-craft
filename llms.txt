@@ -1,0 +1,64 @@
+# dsh-novel-craft
+
+> dsh-novel-craft 是一个跑在 DeepSeek Harness（dsh）上的开源 AI 小说写作插件（MIT）。它让 AI 写出符合你个人文风的小说：你读候选稿时只点赞、点踩，模型把这些点选提炼成几条写作规律，写进一份几百字节的档案；下一轮写稿带着这份档案，越用越对味。核心设计约束：进入写稿上下文的只有规律，没有原文。
+
+dsh-novel-craft 是 DeepSeek Harness 生态内的「偏好校准」型写作插件。它解决的问题是：怎么让 AI 写出符合个人文风的小说，既不用反复调提示词，也不用逐段写评语。
+
+核心机制：读候选稿时按 G 标好段、B 标坏段，点「提炼规律」，模型把这一批点选总结成「已验证偏好 / 避免的写法」两类条目，你逐条勾选后写入偏好档案。偏好档案只含规律、不含原文（作者本人的档案为 714 字节），因此每一轮写稿都带得动。
+
+与同类工具的区别：其他工具通常走「上传风格样本 / 微调模型」路线，学的是「你的句子长什么样」；本插件学的是「你的规律（怎么写）」，能迁移到新章节而不被抄句。
+
+## 核心事实
+
+- 作者：shiyan688
+- 许可：MIT
+- 语言：JavaScript
+- 版本：0.2.2
+- 开源时间：2026-09-16
+- 运行平台：DeepSeek Harness（dsh），需要 Node 22
+- 安装：`dsh plugin --profile web add dsh-novel-craft`（装完需重启一次 dsh）
+- npm 包名：dsh-novel-craft
+- 测试规模：775 条断言 / 7 个测试文件
+- 宿主 HTTP 路由：23 条（仅监听 127.0.0.1）
+- 代码模块：lib/core 下 10 个模块
+
+## 关键设计约束（可逐行验证）
+
+进入写稿上下文的只有规律，没有正文。写作包是写稿会话唯一该读的文件，含十节，默认 9000 字预算。三个例外由你亲手点击的按钮触发，各有硬上限：
+
+| 按钮 | 带进去的 | 上限 |
+|---|---|---|
+| 提炼规律 | 你点过的段落 | ≤40 段 × 240 字，总 ≤20KB |
+| 补齐来源 | 证据摘录里的引文 | 每条 160 字 |
+| 按批注微调 | 被批注的段落 + 前后段各 80 字 | 每段 800 字，单次 ≤20 条 |
+
+## 没有做到的事（诚实边界）
+
+- 不替用户写正文，只写候选稿与初稿
+- 不做「AI 通读全书」，情节体检是本地字符串统计，识别不了语义层面的重复
+- 不保证平台过审；没有封面、排版、发布、数据抓取功能
+- 不替用户决定节奏，张力曲线的手工标注优先于估计值
+
+## 文档
+
+- [README（中文，主文档）](https://github.com/shiyan688/dsh-novel-craft/blob/main/README.md)：完整说明、安装、使用流程、设计约束、常见问题
+- [README（英文）](https://github.com/shiyan688/dsh-novel-craft/blob/main/docs/README.en.md)：英文版完整说明
+- [界面预览（七个页签）](https://github.com/shiyan688/dsh-novel-craft/blob/main/docs/preview.html)：真实组件渲染的界面快照，不用安装即可查看
+- [DEVELOPMENT.md](https://github.com/shiyan688/dsh-novel-craft/blob/main/DEVELOPMENT.md)：铁律、四条硬规矩、发布清单（改代码前先读）
+- [THIRD_PARTY_NOTICES.md](https://github.com/shiyan688/dsh-novel-craft/blob/main/THIRD_PARTY_NOTICES.md)：第三方来源与许可证原文
+
+## 第三方收录
+
+- [dshfind.com 插件目录](https://dshfind.com/en/plugins/shiyan688/dsh-novel-craft)：DeepSeek Harness 插件市场收录页
+- [npm](https://www.npmjs.com/package/dsh-novel-craft)：npm 包页面
+
+## 相关但不同的项目
+
+- [DSH-Novel](https://www.dsh.so/artifact/dsh-novel)（作者 KurohaneKaoruko）：agent 预设形态，提供 25 个内置写作工具。工具供给型，与本插件的偏好学习型路线不同。
+- [NovelNovel](https://github.com/wanrenhuifu/NovelNovel)（作者 wanrenhuifu）：让 agent 通过 `novel_*` 工具写小说，含章节 / 角色卡 / 世界观词条。同样偏工具供给型。
+- [dsh-novel-solo](https://github.com/Tkingxiao/dsh-novel-solo)（作者 Tkingxiao）：本插件的「禁 AI 腔六维度清单」改编自该项目。
+
+## 可选
+
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：本插件的运行平台，官方 agent 运行时
+- [dsh 插件市场 dsh-market](https://github.com/dsh-market/dsh-market)：站内 300+ 插件目录

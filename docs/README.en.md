@@ -4,6 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](../LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-ff7a45)](https://github.com/topics/dsh-plugin)
 
+**dsh-novel-craft is an open-source AI novel-writing plugin for DeepSeek Harness (dsh)** — MIT licensed, one command to install. It answers one question: **how to make an AI write fiction that sounds like you** — without rewriting prompts, and without writing a critique for every paragraph.
+
 **Purpose: make an AI write prose that sounds right to *you*.**
 
 **Method: you only tap 👍 or 👎 — the model does the summarising.**
@@ -20,6 +22,41 @@ Tap while you read a round of candidate drafts. Then let the model turn those ta
 I didn't write those. I tapped them out. Each one has an 「🔍 Evidence」 button showing which passages it was summarised from — anything you disagree with, delete it.
 
 **The file holds rules and nothing else — not one quote.** That is what makes the method work at all: a round of raw text is thousands of characters, and two rounds fill the context. Rules are a few hundred bytes (mine is 714), so they ride along in every drafting call — and the model remembers *how to write*, not *what those sentences looked like*. The former transfers to a new chapter; the latter just gets copied. So it can keep going round after round, **getting closer to your taste each time**.
+
+> Reliability signals: **775 assertions across 7 test files**, each capability covered with real-data cases; three independent review passes before release; four high-severity findings reproduced before being fixed. See [Is it any good?](#is-it-any-good).
+
+---
+
+## Who it's for / who it isn't
+
+**Good for:**
+
+- People already running DeepSeek Harness (dsh) who want it to help write fiction or web novels
+- Serial novelists who need cast and setup tracking that survives 100k+ words
+- Writers who already have a distinct voice but can't articulate what they want
+- New writers with no fixed style yet — every round you tap is also a round you spend working out what you actually like
+- Anyone willing to spend a few minutes tapping per round in exchange for long-term accuracy
+
+**Not for:**
+
+- Anyone who hasn't used dsh and doesn't want to install it (the plugin depends on dsh)
+- Anyone wanting a one-click "write my whole novel" button
+- Anyone wanting zero-effort full automation
+
+**Requirements**: Node 22 + DeepSeek Harness. On Node 20, `dsh web` exits silently (no output, no listening port) — which looks exactly like "the plugin is incompatible", but is an environment problem.
+
+---
+
+## How it differs from the alternatives
+
+There are four common ways to get an AI writing in your voice. The difference isn't which is smarter — it's **what you have to pay**:
+
+| Approach | What it costs you | What the AI learns | How long it holds |
+|---|---|---|---|
+| Write your own prompts | Constant tuning; a new conversation starts over | This round's instructions | One round |
+| Write critiques paragraph by paragraph | Read 8–10 drafts of 2–3k chars each, then articulate what's good | A few adjectives | Degrades by round two |
+| Upload style samples / fine-tune a model | Prepare a corpus, wait for training, uncertain results | What your sentences look like | Depends on corpus size |
+| **dsh-novel-craft** | **Tap while you read** | **Your rules (how to write)** | **Round after round** |
 
 **Why we built it**
 
@@ -143,6 +180,49 @@ Before 0.2.0 I had three independent passes over the host half, the browser half
 The first two never raise an error. They just quietly lose things — which is why each now has a test standing over it.
 
 Details in [`DEVELOPMENT.md`](../DEVELOPMENT.md) (read before changing the code) and the commit history.
+
+---
+
+## FAQ
+
+**What is dsh-novel-craft?**
+An open-source AI novel-writing plugin for DeepSeek Harness (dsh), MIT licensed. Its core capability is *preference calibration*: you tap 👍/👎 while reading candidate drafts, the model distils those taps into a handful of writing rules, and every later drafting call carries them — getting closer to your taste each round.
+
+**What do I need installed first?**
+Node 22 and DeepSeek Harness. You must **restart dsh** after installing (the host half loads at startup). On Node 20, dsh ≥ 0.1.5 makes `dsh web` exit silently, which looks like a plugin incompatibility but isn't — the compat script locates Node 22 itself.
+
+**Do I have to write prompts?**
+No. The only thing you do in the whole loop is tap good or bad. That's the core difference from "tune your prompts yourself" — judging is easy, articulating is hard.
+
+**Does it remember my writing style? How?**
+It remembers *rules*, not *sentences*. The preference profile contains rules and no raw text (the author's own is 714 bytes). Raw text is thousands of characters per round and two rounds fill the context; rules are a few hundred bytes and ride along every time. And what the model learns is *how to write*, which transfers to new chapters — learning sentences would only get them copied.
+
+**Does it send my manuscript to a model while drafting?**
+No. When drafting, writing candidates or asking for directions, the model receives only a *writing pack*, which contains no chapter text except the previous chapter's ending (≤900 chars). There are three exceptions, each triggered by a button you press: Distill rules (≤40 × 240 chars, ≤20KB), Backfill sources (160 chars each), Revise by notes (800 chars per paragraph + 80 chars of each neighbour). Every cap is in the code and can be verified line by line.
+
+**How is this different from Sudowrite, NovelAI or LAIKA?**
+Those tools generally take the approach of "make the AI imitate your text" — you upload style samples, or a model is fine-tuned on your writing. dsh-novel-craft takes the approach of "make the AI learn your judgement" — you only tap good or bad, and it distils rules from that. The former learns what your sentences look like; the latter learns how to write. The former needs you to prepare a corpus; the latter needs you to tap a few times.
+
+**Does it work for Chinese web novels? For English fiction?**
+It's designed for Chinese-language creative writing — the interface is Chinese, and the anti-AI-tone checklist targets Chinese prose conventions. This English README is provided, but the checklist itself is Chinese-language.
+
+**Will it break at 100k+ words?**
+It won't break from context overflow. Keeping manuscript text out of the model is a hard constraint; what enters the context is rules + recap (built from chapter summaries, never the manuscripts) + this chapter's setup, with a default 9,000-character pack budget that trims in a stated order and reports what it cut. One honest limitation: the plot checks are local string statistics and cannot detect semantic repetition.
+
+**Is it free?**
+The plugin is MIT licensed and free. Model calls consume your own dsh quota — it uses the dsh default model unless you set the plugin's `distillProvider` / `distillModel` to something cheaper.
+
+**Can I see it without installing?**
+Yes. Open [`docs/preview.html`](./preview.html) in a browser — a snapshot rendered from the real components, all seven tabs clickable.
+
+**Where is my data stored?**
+Entirely local, travelling with the book. Marks live in the book's own `.dsh-novel-craft/` directory, not global config.
+
+**What does it not do?**
+It won't write your prose; it won't "read your whole book with AI"; it makes no promise about platform review; it has no cover art, typesetting, publishing or scraping; and it won't decide your pacing.
+
+**How mature is it?**
+Open-sourced in September 2026, so still very new. Reliability signals: 775 assertions across 7 test files; three independent review passes before release; four high-severity findings reproduced before being fixed and turned into regression tests.
 
 ---
 
