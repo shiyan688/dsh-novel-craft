@@ -399,6 +399,9 @@ head('规律 → 证据反查')
   ok('界面能拉到来源表', fetched.body.count >= 2 && fetched.body.index[key] !== undefined)
 
   // 老档案补齐：模型给映射 → by:'model'；模型不给 → 本地匹配且标成推测
+  // createBookFixture 只在作品根造了 设定/人物/剧情/评论，状态目录得自己建——
+  // 否则 writeFile 会 ENOENT（作品根的 .dsh-novel-craft 不属于 fixture 的产物）。
+  await mkdir(join(fx.bookDir, STATE_DIR_UNDER_TEST), { recursive: true })
   await writeFile(
     join(fx.bookDir, STATE_DIR_UNDER_TEST, '作者偏好档案.md'),
     [
