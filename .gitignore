@@ -10,5 +10,6 @@ marks.json
 
 # 本机调试
 .npm-cache/
+.test-temp/
 *.log
 .DS_Store

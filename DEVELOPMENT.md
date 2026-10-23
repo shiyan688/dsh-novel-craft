@@ -9,8 +9,8 @@
 
 一个 dsh 插件：中文网文创作工作台。核心那一件事是**作者点好/坏 → 蒸馏成可复用的写作规律**。
 
-**铁律：进写稿上下文的只有规律。** 原文（章节正文、标注原文、证据摘录、批注）不进写稿上下文；
-只有三处**用户亲手点下的按钮**会触发一次辅助调用并带上原文，各自有硬上限，并且写在 README 里。
+**口味输入只用规律。** 标注原文、证据摘录、批注不作为写稿的口味样本；写作包为了接续，
+包含最多 900 字符的上一章结尾。三处**用户亲手点下的辅助操作**会带上标注原文，各自有硬上限，并且写在 README 里。
 **任何新增的模型调用都要能在这张表里找到位置；找不到就是破了铁律。**
 
 | 调用点 | 喂进去的原文 | 上限 |
@@ -82,7 +82,7 @@ lib/core/*.js    十个模块，彼此只共享 text.js —— 所以每个都�
 
 ```bash
 npm install
-npm test                       # 7 个文件，775 条断言，全绿才放行
+npm test                       # 7 个测试文件，全绿才放行；模型部分使用替身
 node test/workbench.test.mjs   # 单跑某个文件
 node scripts/build-preview.mjs # 重新生成 docs/preview.html（README 链接指向它）
 node scripts/check-dsh-compat.mjs [版本|npm 标签] [--keep]
@@ -98,6 +98,19 @@ node scripts/check-dsh-compat.mjs [版本|npm 标签] [--keep]
 
 测试**不依赖任何本机路径**：作品目录由 `test/fixtures.mjs` 在临时目录里造，写操作全在临时目录，
 跑完就删。找不到成对的 react/react-dom 时渲染用例会打印"跳过"并以 0 退出（或用 `DSH_REACT_ROOT` 指定）。
+
+Windows 沙盒若拒绝系统临时目录中的原子 rename，可在当前 PowerShell 会话设置临时目录后运行：
+
+```powershell
+New-Item -ItemType Directory -Force .test-temp | Out-Null
+$env:TEMP = Join-Path (Get-Location) '.test-temp'
+$env:TMP = $env:TEMP
+npm test
+```
+
+快速试写沿用 `newchapter` 接口，`mode: 'quick'` 固定两个方向与约 500 字目标；未传 mode 的接口调用保持完整章节。
+`findProfile` 每次生成时读取本书及对应轮次内最新的有内容档案，空骨架不参与选择；来源在向导与写作包中可核对。
+新增回归涵盖跨场景采纳、长方向名隔离、空输出保留稿件以及请求期间的模式锁定；这些测试不证明真实文风提升。
 
 ### 关于 dsh 版本兼容
 

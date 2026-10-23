@@ -60,6 +60,7 @@ const RUNS = join(WORKSPACE, 'factory/runs/逐弈登仙')
 const CH9 = ws.draftsDir('第9章')
 
 // discover 的兜底扫描根是进程 cwd：钉成作品根，测试从哪儿跑都一样
+const originalCwd = process.cwd()
 process.chdir(WORKSPACE)
 
 let failures = 0
@@ -284,6 +285,7 @@ function listingFor(path) {
 
 const client = await loadClient()
 if (client === null) {
+  process.chdir(originalCwd)
   await ws.cleanup()
   console.log('\n跳过：本机没有成对的 react / react-dom，渲染用例无法运行。')
   console.log('装上再跑：npm install（或用 DSH_REACT_ROOT=<含 react-dom 的目录> node test/client-render.test.mjs）')
@@ -542,6 +544,8 @@ head('纯逻辑：路径显示与最近使用')
   ok('恰好等于上限时不截断', shortPath('/a/b/c/d/e/f/第9章/候选稿', 20) === '/a/b/c/d/e/f/第9章/候选稿')
   ok('长路径保尾部三段', shortPath(CH9, 30) === '…/逐弈登仙/第9章/候选稿', shortPath(CH9, 30))
   ok('取末段名', baseNameOf('/a/b/候选稿/') === '候选稿')
+  ok('Windows 路径显示使用正确的末段', baseNameOf('C:\\作品\\候选稿\\') === '候选稿')
+  ok('Windows 长路径保尾部三段', shortPath('C:\\作品\\很长的父目录\\逐弈登仙\\第9章\\候选稿', 20) === '…/逐弈登仙/第9章/候选稿')
   ok('根目录末段安全', baseNameOf('/') === '')
 
   // 旧宿主半区：discover 会回 SPA 的 HTML → 必须收敛成空数组，否则永远"正在扫描"
@@ -560,6 +564,7 @@ head('纯逻辑：路径显示与最近使用')
   ok('清空后为空', readRecents().length === 0)
 }
 
+process.chdir(originalCwd)
 await ws.cleanup()
 console.log(`\n${failures === 0 ? '全部通过 ✅' : `失败 ${failures} 项 ❌`}`)
 process.exit(failures === 0 ? 0 : 1)

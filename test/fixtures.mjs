@@ -77,7 +77,7 @@ export async function createWorkspace(options = {}) {
     bookDir,
     chapterDir: (name) => join(runs, name),
     draftsDir: (name) => join(runs, name, '候选稿'),
-    cleanup: () => rm(root, { recursive: true, force: true }),
+    cleanup: () => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }),
   }
 }
 
@@ -213,6 +213,6 @@ export async function createBookFixture(options = {}) {
     bookDir,
     runs,
     draftsDir: (chapter) => join(runs, chapter, '候选稿'),
-    cleanup: () => rm(root, { recursive: true, force: true }),
+    cleanup: () => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }),
   }
 }

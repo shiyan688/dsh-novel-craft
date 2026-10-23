@@ -261,7 +261,7 @@ const STAGE = draw(exportsObj.__internals.StageView, {
   },
 })
 
-// ── 开新章向导：摆到"方向"这一步（这是这批新能力里最要紧的一屏）──────────
+// ── 开新章向导：展示默认的快速试写入口 ─────────────────────────────────
 const DIRECTIONS = [
   { index: 0, letter: 'A', name: '保守精修', detail: '以最小改动保留现有骨架，只在细节处收紧，给作者一个基准版' },
   { index: 1, letter: 'B', name: '配角识货', detail: '让同行配角先认出货色，主角的算计藏在他的沉默里' },
@@ -284,7 +284,7 @@ const WIZARD = (() => {
   queue.length = 0
   const picked = {}
   for (const d of DIRECTIONS) picked[d.index] = d.index !== 5
-  for (const value of [13, 'directions', WIZARD_STATUS, WIZARD_STATUS.setup.text, 10, '', DIRECTIONS, picked, '', '', [], { done: 0, total: 0, current: '' }, null, '合并稿', '']) {
+  for (const value of [13, 'setup', WIZARD_STATUS, WIZARD_STATUS.setup.text, 2, '', [], {}, '', '', [], { done: 0, total: 0, current: '' }, null, '合并稿', '', true]) {
     queue.push(value)
   }
   return renderToStaticMarkup(
