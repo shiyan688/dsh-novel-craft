@@ -38,6 +38,7 @@ const WORKSPACE = ws.root
 const CH9 = ws.draftsDir('第9章')
 const CH8 = ws.draftsDir('第8章')
 // discover 的兜底扫描根就是进程 cwd：钉成作品根，测试从哪儿跑都一样
+const originalCwd = process.cwd()
 process.chdir(WORKSPACE)
 
 /** 现算期望篇数：稿子会随创作增加，断言不该钉死数字。 */
@@ -167,7 +168,7 @@ head('推荐目录 discover（扫作品目录）')
     ok('二次请求命中缓存', cached.body.cached === true && cached.body.dirs.length === body.dirs.length)
   } finally {
     await app.close()
-    await rm(fixture, { recursive: true, force: true })
+    await rm(fixture, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }
 
@@ -186,7 +187,7 @@ head('目录篇数 annotate')
     ok('非法入参退化成空计数', bad.status === 200 && Object.keys(bad.body.counts).length === 0)
   } finally {
     await app.close()
-    await rm(fixture, { recursive: true, force: true })
+    await rm(fixture, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }
 
@@ -203,6 +204,7 @@ head('标注闭环 state / marks / promote')
     ok('甲切 3 段', initial.body.candidates.find((c) => c.file === '甲.txt')?.segments.length === 3)
 
     const marked = await postJson(app.base + 'marks', { file: '甲.txt', index: 1, mark: 'good' })
+    if (marked.status !== 200) throw new Error(JSON.stringify(marked))
     ok('标注落盘返回', marked.body.marks['甲.txt']?.['1'] === 'good')
     const markedBad = await postJson(app.base + 'marks', { file: '甲.txt', index: 2, mark: 'bad' })
     ok('坏标注并存', markedBad.body.marks['甲.txt']?.['2'] === 'bad')
@@ -221,7 +223,7 @@ head('标注闭环 state / marks / promote')
     ok('坏标注未污染落盘', restored.body.marks['甲.txt']['1'] === 'good' && restored.body.marks['甲.txt']['2'] === 'bad')
   } finally {
     await app.close()
-    await rm(fixture, { recursive: true, force: true })
+    await rm(fixture, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }
 
@@ -285,7 +287,7 @@ head('证据摘录与规律档案分离')
     ok('非字符串内容被拒', bad.status === 400 && String(bad.body.error).includes('content'))
   } finally {
     await app.close()
-    await rm(fixture, { recursive: true, force: true })
+    await rm(fixture, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }
 
@@ -312,7 +314,7 @@ head('旧档案迁移')
     ok('原文进了证据摘录', (await readFile(join(stateDir, '证据摘录.md'), 'utf8')).includes('好段一'))
   } finally {
     await app.close()
-    await rm(fixture, { recursive: true, force: true })
+    await rm(fixture, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }
 
@@ -359,7 +361,7 @@ head('提炼规律 distill')
     ok('已提炼的不会被重复送去', nothing.status === 400 && String(nothing.body.error).includes('待提炼'))
   } finally {
     await app.close()
-    await rm(fixture, { recursive: true, force: true })
+    await rm(fixture, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }
 
@@ -442,7 +444,7 @@ head('提炼的失败与边界')
     ok('没有模型路由时给明确指引', status === 400 && String(body.error).includes('distillProvider'))
   } finally {
     await noRoute.close()
-    await rm(fixture, { recursive: true, force: true })
+    await rm(fixture, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }
 
@@ -497,6 +499,7 @@ head('纯函数')
   ok('输入有条数上限', capped.used === 40 && capped.total === 60, JSON.stringify([capped.used, capped.total]))
 }
 
+process.chdir(originalCwd)
 await ws.cleanup()
 console.log(`\n${failures === 0 ? '全部通过 ✅' : `失败 ${failures} 项 ❌`}`)
 process.exit(failures === 0 ? 0 : 1)

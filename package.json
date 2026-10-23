@@ -1,6 +1,6 @@
 {
   "name": "dsh-novel-craft",
-  "description": "DSH 小说创作工作台：抽卡式作者选段 → 蒸馏成「作者偏好档案」（只有规律、不放原文），再往下走章节看板、每章写作包、批注式微调、账目与情节体检、立项到完本的阶段门禁。",
+  "description": "面向中文小说作者的 DeepSeek Harness 插件：用段落点赞/点踩提炼可编辑的偏好规则，再用于候选稿与局部改稿；本地保存，MIT 开源，需自备模型服务。",
   "version": "0.3.0",
   "license": "MIT",
   "type": "module",

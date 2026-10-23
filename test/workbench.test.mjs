@@ -13,8 +13,8 @@
  */
 import http from 'node:http'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readFile, readdir, writeFile, utimes } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
@@ -207,6 +207,7 @@ function makeCtx(config, extras = {}) {
  * 假模型：按 system 提示分流，三条链路（提炼规律 / 批注微调 / 补齐来源）各有各的回复。
  * 这样能在没有真模型的情况下把"模型 → 解析 → 落盘"整条链路测通。
  */
+let emptyDraftReply = false
 const fakeReply = (options) => {
   const system = String(options.system ?? '')
   if (system.includes('只给"写法方向"')) {
@@ -217,6 +218,7 @@ const fakeReply = (options) => {
     ].join('\n')
   }
   if (system.includes('多版候选稿中的一篇')) {
+    if (emptyDraftReply) return ''
     return ['第3章 望舒城', '', '西市的风把幌子吹得直响。', '', '宁陈没有急着开口，先看掌柜的手。'].join('\n')
   }
   if (system.includes('压成可复用的写作规律')) {
@@ -297,7 +299,7 @@ head('宿主接口：本章设定与批注')
 {
   const saved = await postJson('setup', { chapter: 2, text: '# 第2章 本章设定\n\n## 本章目标（必须发生）\n\n- 拿下当铺的第一桶金\n' })
   ok('本章设定能存', saved.status === 200 && saved.body.saved === true, JSON.stringify(saved.body))
-  ok('存到了作品的状态目录里', String(saved.body.path).includes('.dsh-novel-craft/章节设定'), saved.body.path)
+  ok('存到了作品的状态目录里', String(saved.body.path).includes(join('.dsh-novel-craft', '章节设定')), saved.body.path)
 
   const added = await postJson('annotation', { chapter: 2, action: 'add', seg: 1, type: 'ai-tone', note: '这里套话了', quote: '第二段' })
   ok('批注能加', added.status === 200 && added.body.list.length === 1 && added.body.added === true)
@@ -473,7 +475,7 @@ head('开新章：方向 → 候选 → 合并 → 写入正文（端到端）')
     texts.push(one.body)
   }
   ok('文件名是"第N章-字母-方向名"', texts[0].file === '第8章-A-保守精修.txt', texts[0].file)
-  ok('候选数量与方向一致', (await readdir(texts[0].path.replace(/\/[^/]+$/, ''))).filter((n) => n.endsWith('.txt')).length === 3)
+  ok('候选数量与方向一致', (await readdir(dirname(texts[0].path))).filter((n) => n.endsWith('.txt')).length === 3)
   ok('正文里没有模型的开场白', !String((await readFile(texts[0].path, 'utf8'))).includes('好的，以下是'), '')
 
   const draftPrompts = llmSink.slice(draftSinkBefore).map(promptText)
@@ -527,6 +529,53 @@ head('开新章：方向 → 候选 → 合并 → 写入正文（端到端）')
 
   // 收尾：卡池切回原来的目录，免得影响后面的用例
   config.candidateDir = previousDir
+}
+
+head('首次试写与新场景偏好复用')
+{
+  const promptText = (options) => String(options.system ?? '') + '\n' + JSON.stringify(options.messages)
+  const trial = await createBookFixture()
+  const previous = { projectDir: config.projectDir, candidateDir: config.candidateDir }
+  try {
+    config.projectDir = trial.bookDir
+    config.candidateDir = trial.draftsDir('第2章')
+    const rootProfile = join(trial.bookDir, STATE_DIR_UNDER_TEST, '作者偏好档案.md')
+    await mkdir(join(trial.bookDir, STATE_DIR_UNDER_TEST), { recursive: true })
+    await writeFile(rootProfile, '# 作者偏好档案\n\n## 已验证偏好（作者喜欢什么）\n\n- 旧规则只供基准比较\n', 'utf8')
+    await utimes(rootProfile, new Date('2020-01-01'), new Date('2020-01-01'))
+    const adopted = await postJson('rules', { items: [{ kind: 'good', text: '新场景必须先写杯沿上的裂缝' }] })
+    ok('在候选池采纳新规则成功', adopted.status === 200, JSON.stringify(adopted.body))
+
+    // 换到下一章，生成一个更晚的空骨架：它不能遮住上一轮真实采纳的规则。
+    config.candidateDir = trial.draftsDir('第3章')
+    await postJson('evidence', {})
+    const foreign = join(trial.root, 'factory', 'runs', '另一本书', STATE_DIR_UNDER_TEST)
+    await mkdir(foreign, { recursive: true })
+    await writeFile(join(foreign, '作者偏好档案.md'), '# 作者偏好档案\n\n- 别书规则不得混入当前作品\n', 'utf8')
+    const status = await postJson('newchapter', { action: 'status', chapter: 9 })
+    ok('跨场景显示实际采用的偏好来源', status.body.profilePath === join(trial.draftsDir('第2章'), STATE_DIR_UNDER_TEST, '作者偏好档案.md'), String(status.body.profilePath))
+    const before = llmSink.length
+    const directions = await postJson('newchapter', { action: 'directions', chapter: 9, count: 16, mode: 'quick', setupText: '在雨夜茶馆等待失约的朋友' })
+    ok('快速试写最多返回两个方向，即使模型多写', directions.status === 200 && directions.body.directions.length === 2, JSON.stringify(directions.body.error))
+    const one = await postJson('newchapter', { action: 'draft', chapter: 9, mode: 'quick', index: 0, direction: directions.body.directions[0], directions: directions.body.directions, setupText: '在雨夜茶馆等待失约的朋友' })
+    const prompts = llmSink.slice(before).map(promptText)
+    ok('新场景真正带上刚采纳的规则，不被根目录旧档案或空骨架遮住', prompts.length === 2 && prompts.every((p) => p.includes('新场景必须先写杯沿上的裂缝') && !p.includes('旧规则只供基准比较') && !p.includes('别书规则不得混入当前作品')), '')
+    ok('快速试写的写作包使用短篇目标且不修改作品设置', prompts.every((p) => p.includes('目标 500 字')) && config.targetChapterWords === 3000, '')
+    ok('快速试写限制模型输出预算并独立命名', one.status === 200 && one.body.file.includes('-试写') && llmSink.at(-1).maxTokens === 1500, JSON.stringify(one.body.error))
+    const longDirection = { name: 'ABCDEFGHIJKLMNOPQRSTUVWX', detail: '先写器物，再让人物开口' }
+    const fullLong = await postJson('newchapter', { action: 'draft', chapter: 10, index: 0, direction: longDirection })
+    const fullSaved = await readFile(fullLong.body.path, 'utf8')
+    const quickLong = await postJson('newchapter', { action: 'draft', chapter: 10, index: 0, direction: longDirection, mode: 'quick' })
+    ok('长方向名不会截掉试写后缀或覆盖完整稿', fullLong.status === 200 && quickLong.status === 200 && fullLong.body.path !== quickLong.body.path && quickLong.body.file.endsWith('-试写.txt') && await readFile(fullLong.body.path, 'utf8') === fullSaved, '')
+    const saved = await readFile(one.body.path, 'utf8')
+    emptyDraftReply = true
+    const empty = await postJson('newchapter', { action: 'draft', chapter: 9, mode: 'quick', index: 0, direction: directions.body.directions[0] })
+    ok('空模型回复给出重试提示并保留之前的候选', empty.status === 400 && String(empty.body.error).includes('没有生成候选正文') && await readFile(one.body.path, 'utf8') === saved, JSON.stringify(empty.body))
+  } finally {
+    emptyDraftReply = false
+    Object.assign(config, previous)
+    await trial.cleanup()
+  }
 }
 
 head('发布前审查的回归（数据完整性）')
@@ -788,6 +837,9 @@ head('客户端面板')
     const wizardProps = { t, chapter: 8, onBack: () => {}, onDone: () => {}, onGoCards: () => {} }
     const w1 = draw(I.NewChapterWizard, wizardProps)
     ok('向导第一步问"这一章要写什么"', w1.includes('这一章要写什么') && w1.includes('本章设定'), '')
+    ok('向导默认是两份短候选并说明如何切回完整章节', w1.includes('2 份短候选') && w1.includes('500 字') && w1.includes('取消勾选') && /type="checkbox"[^>]*checked/.test(w1), '')
+    const wBusy = draw(I.NewChapterWizard, wizardProps, [8, 'setup', null, '', 10, '', [], {}, 'directions', '', [], { done: 0, total: 0, current: '' }, null, '合并稿', '', false])
+    ok('生成方向时不能切换模式或改变候选数量', /type="checkbox"[^>]*disabled/.test(wBusy) && /type="number"[^>]*min="2"[^>]*disabled/.test(wBusy), '')
     const DIRS = [
       { index: 0, letter: 'A', name: '保守精修', detail: '以最小改动保留现有骨架' },
       { index: 1, letter: 'B', name: '配角识货', detail: '让同行配角先认出货色' },
