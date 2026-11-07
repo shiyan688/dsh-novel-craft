@@ -43,7 +43,7 @@ I didn't write those. I tapped them out. Each one has an 「🔍 Evidence」 but
 - Anyone wanting a one-click "write my whole novel" button
 - Anyone wanting zero-effort full automation
 
-**Requirements**: Node 22 + DeepSeek Harness. On Node 20, `dsh web` exits silently (no output, no listening port) — which looks exactly like "the plugin is incompatible", but is an environment problem.
+**Requirements.** Use DeepSeek Harness. DSH CLI 0.2.2-rc.1 requires Node 24.9 or newer. The official Desktop app bundles its runtime.
 
 ---
 
@@ -72,11 +72,17 @@ The short version: **judging is easy, articulating is hard.** Tapping takes a se
 
 ## Install
 
+### DSH Web
+
 ```bash
 dsh plugin --profile web add dsh-novel-craft
 ```
 
 Restart dsh once afterwards (the host half loads at startup). A 「🎴 抽卡工作台」 entry appears at the bottom of the sidebar.
+
+### Official DSH Desktop
+
+Add `dsh-novel-craft` from the Plugins page, quit the app completely, and reopen it. The workbench appears at the bottom of the sidebar. You can also launch Desktop once, quit it, run `dsh plugin --profile desktop add dsh-novel-craft` with the Desktop-installed command, and reopen the app.
 
 Not ready to install? Open [`docs/preview.html`](./preview.html) in a browser — a static snapshot rendered from the real components, all seven tabs.
 
@@ -189,7 +195,7 @@ Details in [`DEVELOPMENT.md`](../DEVELOPMENT.md) (read before changing the code)
 An open-source AI novel-writing plugin for DeepSeek Harness (dsh), MIT licensed. Its core capability is *preference calibration*: you tap 👍/👎 while reading candidate drafts, the model distils those taps into a handful of writing rules, and every later drafting call carries them — getting closer to your taste each round.
 
 **What do I need installed first?**
-Node 22 and DeepSeek Harness. You must **restart dsh** after installing (the host half loads at startup). On Node 20, dsh ≥ 0.1.5 makes `dsh web` exit silently, which looks like a plugin incompatibility but isn't — the compat script locates Node 22 itself.
+Install DeepSeek Harness Web or the official Desktop app, then install the plugin and restart DSH. For the CLI, follow the Node requirement for your DSH release.
 
 **Do I have to write prompts?**
 No. The only thing you do in the whole loop is tap good or bad. That's the core difference from "tune your prompts yourself" — judging is easy, articulating is hard.
@@ -230,15 +236,15 @@ Open-sourced in September 2026, so still very new. Reliability signals: 775 asse
 
 dsh is a set of independently versioned packages — in one public release the CLI can be `0.1.5-rc.2` while the client runtime is still `0.1.1-rc.2`. So this plugin pins nothing: peer dependencies are `*`, resolved from your profile at runtime.
 
-Verified working: `0.1.0-rc.7` (the author's daily driver), `0.1.2-rc.1`, `0.1.5-rc.1` (`latest`), `0.1.5-rc.2` (`next`), `0.1.6-alpha.1`.
+DSH Web has been verified on `0.2.2-rc.1`. Current Web and official Desktop use the authenticated DSH API. Older hosts retain the loopback HTTP entry point.
 
 ```bash
 node scripts/check-dsh-compat.mjs next    # or latest / alpha / a specific version
 ```
 
-It installs a real copy of that dsh in a temp directory, wires the plugin in the profile way, boots it with an isolated `DSH_HOME`, then asserts the host routes answer, the client half is in the manifest, and the half is delivered correctly. It cleans up after itself and never touches your running instance.
+The smoke test starts a real DSH host with an isolated `DSH_HOME`. It checks authentication, candidate directory persistence, draft reads after reload, and client module delivery.
 
-> **dsh ≥ 0.1.5 needs Node 22.** On Node 20, `dsh web` exits silently — no output, no listening port — which looks exactly like "the plugin is incompatible." The compat script finds Node 22 itself and treats a boot failure on older Node as an environment problem, not a compatibility failure.
+> Use Node 24.9 or newer to test current DSH. Set `DSH_NODE` to select a Node executable.
 
 Two traps for plugin authors: **a row's `apply` can run before services are mounted** (`ctx.get('webServer')` is `undefined` in a synchronous `apply`; this plugin uses `ctx.inject` plus a timeout), and **the client bundle URL changed** (newer dsh serves a combined script `/plugins/??a/client.js,b/client.js&rev=…`).
 

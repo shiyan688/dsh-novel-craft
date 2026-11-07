@@ -10,10 +10,8 @@
  * 为什么要单独装一份：dsh 是一组各自独立发版的包，直接拿本机 profile 测等于自欺欺人。
  * 全程隔离（临时 DSH_HOME + 随机端口 + 独立 node_modules），跑完就删。
  *
- * Node 版本：dsh >= 0.1.5 实际要求 Node 22——用 Node 20 起它会**静默退出**（什么都不打印、
- * 端口也不监听），看起来就像"插件不兼容"。所以本脚本默认找一份 Node 22 来起 dsh：
- * 先看 DSH_NODE，再看 PATH 里的 node22，最后才用当前进程的 node；实在只有 Node 20 时，
- * 启动失败会被判成"环境问题、跳过"，而不是"兼容性失败"。
+ * Node 版本：dsh 0.2.2-rc.1 要求 >=24.9.0；旧版可用 Node 22。
+ * 可用 DSH_NODE 指定解释器。DSH_BIN 可指定已安装的同版本 CLI，复用制品排查。
  *
  * 用法：
  *   node scripts/check-dsh-compat.mjs            # 测 npm 的 next
@@ -30,23 +28,26 @@ import { createServer } from 'node:net'
 import { cp, mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
-/** 找一个能跑 dsh 的 Node：DSh 0.1.5+ 要 22，用 20 会静默不启动。 */
+/** 优先使用显式指定的 Node，其次选满足当前 DSH 要求的 Node 24。 */
 function resolveNode() {
-  const candidates = [process.env.DSH_NODE, 'node22', 'node22/bin/node', process.execPath].filter(
+  const candidates = [process.env.DSH_NODE, 'node24', process.execPath, 'node22', 'node22/bin/node'].filter(
     (x) => typeof x === 'string' && x !== '',
   )
+  let fallback
   for (const candidate of candidates) {
     try {
       const out = execFileSync(candidate, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
       const major = Number(out.replace(/^v/, '').split('.')[0])
-      if (Number.isInteger(major) && major >= 22) return { bin: candidate, version: out }
+      const node = { bin: candidate, version: out }
+      if (candidate === process.env.DSH_NODE || major >= 24) return node
+      if (major >= 22) fallback ??= node
     } catch {
       // 这个候选不存在或跑不起来：试下一个
     }
   }
-  return { bin: process.execPath, version: process.version }
+  return fallback ?? { bin: process.execPath, version: process.version }
 }
 const NODE = resolveNode()
 
@@ -56,6 +57,7 @@ const KEEP = args.includes('--keep')
 const strict = args.includes('--strict')
 const spec = args.find((a) => !a.startsWith('--')) ?? 'next'
 const BOOT_TIMEOUT_MS = 120_000
+const PLUGIN_TIMEOUT_MS = 45_000
 
 const checks = []
 const record = (name, ok, detail) => {
@@ -93,9 +95,9 @@ const freePort = () =>
   })
 
 /** 等端口能应答（任何状态码都算起来了）。 */
-async function waitForServer(url, timeoutMs) {
+async function waitForServer(url, timeoutMs, child) {
   const started = Date.now()
-  while (Date.now() - started < timeoutMs) {
+  while (Date.now() - started < timeoutMs && child.exitCode === null && child.signalCode === null) {
     try {
       await fetch(url, { redirect: 'manual' })
       return true
@@ -106,21 +108,32 @@ async function waitForServer(url, timeoutMs) {
   return false
 }
 
-/** 新版 web 默认带 token 鉴权：先从启动日志里拿 token，再带着 cookie 访问。 */
-async function authorizedFetch(base, path, log, cookie) {
-  const tokenMatch = /[?&]token=([A-Za-z0-9_-]+)/.exec(log)
-  const attempt = async (extraPath, headers) =>
-    fetch(base + extraPath, { headers, redirect: 'manual' })
-  if (cookie !== null) {
-    const res = await attempt(path, { cookie })
-    if (res.status < 400) return res
+/** 启动 token 只在首页兑换 Cookie。API 和客户端脚本请求直接复用 Cookie。 */
+async function browserSession(origin, readLog) {
+  const findToken = () => /[?&]token=([A-Za-z0-9_-]+)/.exec(readLog())?.[1]
+  const deadline = Date.now() + 10_000
+  let token = findToken()
+  // 端口可能先开始应答，CLI 稍后才把登录 URL 写到 stdout。
+  while (token === undefined && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    token = findToken()
   }
-  if (tokenMatch === null) return await attempt(path, {})
-  const withToken = path + (path.includes('?') ? '&' : '?') + 'token=' + tokenMatch[1]
-  const res = await attempt(withToken, {})
-  const setCookie = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : []
-  const jar = setCookie.map((c) => c.split(';')[0]).join('; ')
-  return { res, cookie: jar === '' ? null : jar }
+  if (token === undefined) return {}
+  const res = await fetch(new URL('/?token=' + token, origin), { redirect: 'manual' })
+  const cookie = res.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ')
+  if (cookie === '') throw new Error('启动 token 未能兑换浏览器 Cookie')
+  return { cookie }
+}
+
+async function waitForPlugin(check) {
+  const deadline = Date.now() + PLUGIN_TIMEOUT_MS
+  let result
+  do {
+    result = await check()
+    if (result.ready) break
+    await new Promise((resolve) => setTimeout(resolve, 700))
+  } while (Date.now() < deadline)
+  return result
 }
 
 const base = (port) => `http://127.0.0.1:${port}`
@@ -142,19 +155,21 @@ async function main() {
   await mkdir(install, { recursive: true })
 
   let child = null
-  let cookie = null
+  let pluginLog = ''
   try {
     console.log(`\n【准备】临时目录 ${work}`)
     console.log(`        Node ${NODE.version}（${NODE.bin}）`)
 
     // ── 1. 装一份指定版本的 dsh ────────────────────────────────────────────
     await writeFile(join(install, 'package.json'), JSON.stringify({ name: 'compat-probe', private: true }, null, 2))
-    const installed = await run(
-      'npm',
-      ['install', `@deepseek-ai/dsh@${spec}`, '--no-audit', '--no-fund', '--cache', join(work, '.npm-cache')],
-      { cwd: install, timeoutMs: 300_000 },
-    )
-    const binPath = join(install, 'node_modules/@deepseek-ai/dsh/lib/bin.js')
+    const binPath = resolve(process.env.DSH_BIN ?? join(install, 'node_modules/@deepseek-ai/dsh/lib/bin.js'))
+    const installed = process.env.DSH_BIN === undefined
+      ? await run(
+        'npm',
+        ['install', `@deepseek-ai/dsh@${spec}`, '--no-audit', '--no-fund', '--cache', join(work, '.npm-cache')],
+        { cwd: install, timeoutMs: 300_000 },
+      )
+      : { code: 0, err: '', out: '' }
     if (installed.code !== 0 || !existsSync(binPath)) {
       // 老版本（0.1.0-rc.x / 0.1.1-rc.x 等）现在从 npm 全新安装会卡死/失败，
       // 这是上游制品的问题，不代表插件不兼容——按"跳过"处理，但要把话说清楚。
@@ -163,10 +178,16 @@ async function main() {
       if (tail !== '') console.log(`      ${tail}`)
       await writeSummary(`## dsh@${spec} — 跳过\n\n该版本在 npm 上无法全新安装（安装退出码 ${installed.code}），属上游制品问题，未被判定为兼容性失败。\n`)
       console.log(`\ndsh@${spec} 兼容性：跳过 ⚠️（版本装不上，非插件问题）`)
-      if (strict) process.exit(1)
-      process.exit(0)
+      process.exitCode = strict || process.env.DSH_BIN !== undefined ? 1 : 0
+      return
     }
-    const version = JSON.parse(await readFile(join(install, 'node_modules/@deepseek-ai/dsh/package.json'), 'utf8')).version
+    const namespace = dirname(dirname(dirname(binPath)))
+    const version = JSON.parse(await readFile(join(namespace, 'dsh/package.json'), 'utf8')).version
+    if (process.env.DSH_BIN !== undefined && /^\d/.test(spec) && spec !== version) {
+      throw new Error(`DSH_BIN 的版本是 ${version}，预期 ${spec}`)
+    }
+    const [major, minor] = version.split('.').map(Number)
+    const expectShared = major > 0 || minor >= 2
     record(`安装 dsh@${spec}`, true, `实际版本 ${version}`)
 
     // ── 2. 第一次启动：让 dsh 自己初始化 profile ───────────────────────────
@@ -179,7 +200,8 @@ async function main() {
       let log = ''
       proc.stdout.on('data', (d) => (log += d))
       proc.stderr.on('data', (d) => (log += d))
-      const up = await waitForServer(base(port), BOOT_TIMEOUT_MS)
+      child = proc
+      const up = await waitForServer(base(port), BOOT_TIMEOUT_MS, proc)
       return { proc, log, up }
     }
     let boot = await bootOnce()
@@ -192,8 +214,8 @@ async function main() {
         console.log('      设 DSH_NODE=/path/to/node22 再跑，或直接用 node22 执行本脚本。')
         await writeSummary(`## dsh@${spec} — 跳过（Node 版本不足）\n\n本机用的是 ${NODE.version}，dsh >= 0.1.5 需要 Node 22；启动失败是环境问题，未被判定为兼容性失败。\n`)
         console.log(`\ndsh@${spec} 兼容性：跳过 ⚠️（Node ${NODE.version} 跑不起 dsh）`)
-        if (strict) process.exit(1)
-        process.exit(0)
+        process.exitCode = strict ? 1 : 0
+        return
       }
       record('首次启动（初始化 profile）', false, detail)
       throw new Error('boot failed')
@@ -209,13 +231,16 @@ async function main() {
       filter: (src) => !/[\\/](node_modules|\.git|docs)([\\/]|$)/.test(src) && !src.endsWith('.npm-cache'),
     })
     await mkdir(join(pluginCopy, 'node_modules'), { recursive: true })
-    await cp(join(install, 'node_modules/@deepseek-ai'), join(pluginCopy, 'node_modules/@deepseek-ai'), { recursive: true, dereference: false })
+    await cp(namespace, join(pluginCopy, 'node_modules/@deepseek-ai'), { recursive: true, dereference: false })
     const profilePkgPath = join(profileDir, 'package.json')
     const profilePkg = JSON.parse(await readFile(profilePkgPath, 'utf8'))
     profilePkg.dependencies = { ...(profilePkg.dependencies ?? {}), 'dsh-novel-craft': `link:${pluginCopy}` }
     const bundles = profilePkg.dsh?.profile?.bundles ?? []
     if (!bundles.includes('dsh-novel-craft')) bundles.push('dsh-novel-craft')
     profilePkg.dsh = { ...(profilePkg.dsh ?? {}), profile: { ...(profilePkg.dsh?.profile ?? {}), bundles } }
+    // 旧版发布包的 live 监视器依赖未随 profile 加载的 Cordis HMR。
+    // 此处只改隔离 profile，按重启安装流程验证旧入口。
+    if (!expectShared) profilePkg.dsh.profile.patchReload = 'startup'
     await writeFile(profilePkgPath, JSON.stringify(profilePkg, null, 2) + '\n')
     await mkdir(join(profileDir, 'node_modules'), { recursive: true })
     await rm(join(profileDir, 'node_modules/dsh-novel-craft'), { recursive: true, force: true })
@@ -224,80 +249,102 @@ async function main() {
 
     // ── 4. 第二次启动：本次才装载插件 ──────────────────────────────────────
     const second = await freePort()
-    const proc2 = spawn(process.execPath, [binPath, 'web', '--no-open', '--port', String(second)], {
+    const proc2 = spawn(NODE.bin, [binPath, 'web', '--no-open', '--port', String(second)], {
       env: childEnv({ DSH_HOME: home }),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     child = proc2
-    let log2 = ''
-    proc2.stdout.on('data', (d) => (log2 += d))
-    proc2.stderr.on('data', (d) => (log2 += d))
-    const up2 = await waitForServer(base(second), BOOT_TIMEOUT_MS)
-    await writeFile(logPath, log2)
-    record('装载插件后启动服务', up2, up2 ? base(second) : log2.split('\n').filter(Boolean).slice(-2).join(' '))
+    proc2.stdout.on('data', (d) => (pluginLog += d))
+    proc2.stderr.on('data', (d) => (pluginLog += d))
+    const origin = base(second)
+    const up2 = await waitForServer(origin, BOOT_TIMEOUT_MS, proc2)
+    record('装载插件后启动服务', up2, up2 ? base(second) : pluginLog.split('\n').filter(Boolean).slice(-2).join(' '))
     if (!up2) throw new Error('boot failed')
 
-    // ── 5. 断言 1：宿主半区路由（轮询：端口应答 ≠ 插件已挂载）────────────────
-    let stateResponse = null
-    let stateText = ''
-    const deadline = Date.now() + 60_000
-    while (Date.now() < deadline) {
-      const attempt = await authorizedFetch(base(second), '/novel-craft/api/state', log2, cookie)
-      if (attempt.cookie !== undefined) cookie = attempt.cookie
-      const res = attempt.res ?? attempt
-      stateText = await res.text()
-      if (res.status === 200) {
-        stateResponse = res
-        break
+    const session = await browserSession(origin, () => pluginLog)
+    const request = (path, options = {}) => fetch(new URL(path, origin), {
+      ...options,
+      headers: { ...session, ...options.headers },
+      redirect: 'manual',
+    })
+
+    // 断言宿主 API。早期宿主没有共享 Fetch 路由。
+    const shared = '/api/novel-craft/'
+    const legacy = '/novel-craft/api/'
+    const probe = await waitForPlugin(async () => {
+      const state = await request(shared + 'state')
+      const data = await state.json().catch(() => null)
+      if (state.status === 404 || (state.ok && data === null)) {
+        const old = await request(legacy + 'state')
+        const payload = await old.json().catch(() => null)
+        // 当前版本必须通过新认证通道，避免客户端静默退回旧入口。
+        return { prefix: legacy, state: old, payload, ready: !expectShared && old.ok && payload !== null }
       }
-      stateResponse = res
-      await new Promise((r) => setTimeout(r, 1500))
-    }
-    let stateJson = null
-    try {
-      stateJson = JSON.parse(stateText)
-    } catch {
-      stateJson = null
-    }
+      return { prefix: shared, state, payload: data, ready: state.ok && data !== null }
+    })
+    const { prefix, state, payload } = probe
     record(
       '宿主 API /state 可用',
-      stateResponse.status === 200 && stateJson !== null && 'stats' in stateJson && 'candidateDir' in stateJson,
-      `HTTP ${stateResponse.status}` + (stateJson === null ? '' : ` · 字段 ${Object.keys(stateJson).length} 个`),
+      probe.ready && 'stats' in payload && 'candidateDir' in payload,
+      `${prefix}state · HTTP ${state.status}`,
     )
 
-    // ── 6. 断言 2/3：客户端半区被收录并能下发 ──────────────────────────────
-    // 清单同理：客户端名册是按 fiber 事件增量收的，也要轮询一会儿
-    let html = ''
-    let rowMatch = null
-    const manifestDeadline = Date.now() + 60_000
-    while (Date.now() < manifestDeadline) {
-      const indexRes = await authorizedFetch(base(second), '/', log2, cookie)
-      if (indexRes.cookie !== undefined) cookie = indexRes.cookie
-      html = await (indexRes.res ?? indexRes).text()
-      rowMatch = /(\{"id":"dsh-novel-craft"[^}]*\})/.exec(html)
-      if (rowMatch !== null) break
-      await new Promise((r) => setTimeout(r, 1500))
+    if (prefix === shared && session.cookie !== undefined) {
+      const guest = await fetch(new URL(prefix + 'state', origin))
+      record('共享 API 拒绝未登录访问', guest.status === 401, `HTTP ${guest.status}`)
     }
-    record('客户端半区进入启动清单', rowMatch !== null, rowMatch === null ? '清单里没有 dsh-novel-craft' : rowMatch[1].slice(0, 90) + '…')
+    if (probe.ready && prefix === shared) {
+      const drafts = join(work, 'drafts')
+      await mkdir(drafts)
+      await writeFile(join(drafts, '第1章-A.txt'), '远山起雾。\n\n一盏灯还亮着。')
+      const saved = await request(prefix + 'config', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ patch: { candidateDir: drafts } }),
+      })
+      const configured = await saved.json().catch(() => null)
+      record('通过 API 保存候选目录', saved.ok && configured?.value?.candidateDir === drafts, `HTTP ${saved.status}`)
+      const { ready, status } = await waitForPlugin(async () => {
+        const reloaded = await request(prefix + 'state')
+        const updated = await reloaded.json().catch(() => null)
+        return {
+          ready: reloaded.ok && updated?.candidateDir === drafts && updated?.candidates?.[0]?.file === '第1章-A.txt',
+          status: reloaded.status,
+        }
+      })
+      record(
+        '重载后从新目录读取候选稿',
+        ready,
+        `HTTP ${status}`,
+      )
+    }
 
-    if (rowMatch !== null) {
-      const row = JSON.parse(rowMatch[1])
-      // 新版是组合脚本 URL（/plugins/??a/client.js,b/client.js&rev=…），旧版是 /plugins/<id>/client.js
-      const bundleRes = await authorizedFetch(base(second), row.url.replace(/&amp;/g, '&'), log2, cookie)
-      if (bundleRes.cookie !== undefined) cookie = bundleRes.cookie
-      const response = bundleRes.res ?? bundleRes
+    // 客户端名册里的 URL 可能是相对路径，也可能是多个模块的合并 URL。
+    const { clientUrl } = await waitForPlugin(async () => {
+      const html = await (await request('/')).text()
+      const row = /({"id":"dsh-novel-craft"[^}]*})/.exec(html)
+      // 旧版把预加载的客户端直接拼进脚本地址，不提供单独的清单行。
+      const bundled = /<(?:script|link)\b[^>]*\b(?:src|href)=["']([^"']*dsh-novel-craft\/client\.js[^"']*)["']/i.exec(html)
+      const clientUrl = row === null ? bundled?.[1] : JSON.parse(row[1]).url
+      return { ready: clientUrl !== undefined, clientUrl }
+    })
+    record('客户端半区进入启动清单', clientUrl !== undefined)
+    if (clientUrl !== undefined) {
+      const response = await request(clientUrl.replace(/&amp;/g, '&'))
       const body = await response.text()
       record(
         '客户端半区可下发（内容含插件标记）',
-        response.status === 200 && body.includes('抽卡工作台') && body.includes('__ModuleLoader__'),
-        `HTTP ${response.status} · ${body.length} 字节`,
+        response.ok && body.includes('抽卡工作台') && body.includes('__ModuleLoader__'),
+        `HTTP ${response.status} · ${Buffer.byteLength(body)} 字节`,
       )
     }
   } catch (error) {
-    if (checks.length === 0 || !checks.some((c) => c.ok)) record('冒烟测试执行', false, String(error?.message ?? error))
+    const detail = error?.cause?.code ?? error?.cause?.message
+    record('冒烟测试执行', false, String(error?.message ?? error) + (detail ? ' · ' + detail : ''))
   } finally {
     if (child !== null) child.kill('SIGTERM')
     await new Promise((r) => setTimeout(r, 800))
+    if (KEEP) await writeFile(logPath, pluginLog)
     if (KEEP) console.log(`\n现场保留在 ${work}（--keep）`)
     else await rm(work, { recursive: true, force: true }).catch(() => {})
   }
@@ -308,7 +355,7 @@ async function main() {
     `## dsh@${spec} — ${failed.length === 0 ? '通过 ✅' : `${failed.length} 项失败 ❌`}\n\n| 检查 | 结果 | 说明 |\n| --- | --- | --- |\n${lines}\n`,
   )
   console.log(`\ndsh@${spec} 兼容性：${failed.length === 0 ? '全部通过 ✅' : `${failed.length} 项失败 ❌`}`)
-  process.exit(failed.length === 0 ? 0 : 1)
+  process.exitCode = failed.length === 0 ? 0 : 1
 }
 
 await main()

@@ -104,9 +104,7 @@ node scripts/check-dsh-compat.mjs [版本|npm 标签] [--keep]
 `scripts/check-dsh-compat.mjs` 会真装一份指定版本的 dsh、用独立 `DSH_HOME` 起服务，
 断言宿主路由 200 + 客户端半区能下发。
 
-> **dsh ≥ 0.1.5 需要 Node 22**：用 Node 20 跑，`dsh web` 会**静默退出**（没有输出、端口也不监听），
-> 看起来像"插件不兼容"。脚本会自己找 Node 22（`DSH_NODE` → PATH 里的 `node22` → 当前进程），
-> 找不到就把启动失败判成"环境问题、跳过"而不是兼容性失败。
+> **DSH 0.2.2-rc.1 要求 Node 24.9 或更新版本。**用 `DSH_NODE` 指定 Node 可执行文件，或直接用 Node 24 运行脚本。新版 Web 和官方 Desktop 共用认证路由，旧版仍可走回环 HTTP。脚本验证 Web 宿主，Desktop 原生窗口需在受支持的系统上验证。
 
 ---
 

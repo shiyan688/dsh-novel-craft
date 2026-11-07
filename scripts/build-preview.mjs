@@ -302,51 +302,65 @@ const html = `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>dsh-novel-craft · 抽卡工作台 界面预览</title>
+<title>dsh-novel-craft · 工作台界面预览</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  body { margin: 0; background: #f2f2f7; font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: #1c1c1e; }
-  header { padding: 18px 24px 6px; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  p.note { color: #6b6b70; font-size: 12.5px; margin: 0 0 14px; }
-  .tabs { display: flex; gap: 6px; padding: 0 24px; }
-  .tabs button { border: 1px solid rgba(0,0,0,0.1); background: #fff; border-radius: 8px 8px 0 0; padding: 7px 14px; font-size: 13px; cursor: pointer; }
-  .tabs button[aria-selected="true"] { background: #0a84ff; border-color: #0a84ff; color: #fff; font-weight: 600; }
-  .pane { display: none; margin: 0 24px 24px; background: #fff; border: 1px solid rgba(0,0,0,0.1); border-radius: 0 12px 12px 12px; overflow: hidden; }
-  .pane[data-active="true"] { display: block; }
-  /* 组件在真机上是全屏浮层；预览里要把它摊平放进页签，所以中和掉固定定位与遮罩 */
-  .pane [style*="position:fixed"] { position: static !important; inset: auto !important; background: none !important; padding: 0 !important; z-index: auto !important; display: block !important; }
-  .pane [style*="position:fixed"] > div { max-width: 100% !important; height: auto !important; box-shadow: none !important; }
-  .pane > div { min-height: 560px; }
-  .hint { margin: 0 24px 20px; color: #6b6b70; font-size: 12px; }
+  :root { color-scheme: light dark; --preview-bg: #ecefe8; --preview-card: #fafbf6; --preview-ink: #263a35; --preview-muted: #596c66; --preview-line: #d1dbd3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --preview-bg: #151d1a; --preview-card: #222e2a; --preview-ink: #edf4ef; --preview-muted: #a7bdb4; --preview-line: #3d5149; }
+  }
+  body { max-width: 1150px; margin: 0 auto; padding: 0 clamp(10px, 3vw, 24px); background: var(--preview-bg); color: var(--preview-ink); font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+  .preview-header { padding: 18px 0 12px; }
+  .preview-header h1 { font-size: 20px; margin: 0 0 2px; }
+  .preview-header p, .hint { color: var(--preview-muted); font-size: 12px; margin: 0; }
+  .preview-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+  .preview-tabs button { border: 1px solid var(--preview-line); background: var(--preview-card); color: var(--preview-ink); border-radius: 7px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .preview-tabs button[aria-pressed="true"] { background: #297364; border-color: #297364; color: #fff; font-weight: 650; }
+  .pane[hidden] { display: none; }
+  .pane { position: relative; margin-bottom: 12px; }
+  .pane.nc-ui, .pane .nc-shell { border: 1px solid var(--preview-line); border-radius: 14px; overflow: hidden; }
+  .pane.nc-ui { min-height: 350px; background: var(--nc-canvas); }
+  /* The same workbench components sit inline in the static preview. */
+  .pane[data-preview] .nc-overlay { position: static; display: block; background: none; padding: 0; backdrop-filter: none; }
+  .pane[data-preview] .nc-shell { width: 100%; height: auto; box-shadow: none; }
+  .pane[data-preview="picker"] .nc-overlay { position: relative; }
+  .pane[data-preview="picker"] .nc-shell { height: clamp(440px, 72svh, 740px); }
+  .pane[data-preview="picker"] [style*="position:fixed"] { position: absolute !important; padding: 10px !important; }
+  .hint { padding-bottom: 18px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>🎴 dsh-novel-craft · 小说创作工作台</h1>
-  <p class="note">静态快照，由真实组件渲染生成（<code>node scripts/build-preview.mjs</code>）。点页签切换七个界面。</p>
+<header class="preview-header">
+  <h1>dsh-novel-craft · 界面预览</h1>
+  <p>真实组件的静态快照。切换下方标签查看各个工作台界面。</p>
 </header>
-<div class="tabs">
-  <button aria-selected="true" onclick="show(0)">🎴 抽卡（阅读视图）</button>
-  <button aria-selected="false" onclick="show(6)">✍️ 开新章向导</button>
-  <button aria-selected="false" onclick="show(1)">🗂 章节看板</button>
-  <button aria-selected="false" onclick="show(2)">📈 情节体检</button>
-  <button aria-selected="false" onclick="show(3)">🧭 全书阶段</button>
-  <button aria-selected="false" onclick="show(4)">📋 偏好档案</button>
-  <button aria-selected="false" onclick="show(5)">📁 目录选择器</button>
-</div>
-<div class="pane" data-active="true">${CARDS}</div>
-<div class="pane" data-active="false">${BOARD}</div>
-<div class="pane" data-active="false">${PLOT}</div>
-<div class="pane" data-active="false">${STAGE}</div>
-<div class="pane" data-active="false">${PROFILE}</div>
-<div class="pane" data-active="false">${PICKER}</div>
-<div class="pane" data-active="false">${WIZARD}</div>
-<p class="hint">预览里的按钮是静态的（没有跑浏览器）：真机上悬停/光标所在段落会浮出 👍/👎，键盘 j/k/G/B/空格/n/p 可用；单章视图里点一段按 A 就能留批注。章节/情节/全书三页用的是样例作品《逐弈登仙》的数据。</p>
+<nav class="preview-tabs" aria-label="预览界面">
+  <button type="button" data-view="cards" aria-pressed="true">抽卡阅读</button>
+  <button type="button" data-view="wizard" aria-pressed="false">开新章向导</button>
+  <button type="button" data-view="board" aria-pressed="false">章节看板</button>
+  <button type="button" data-view="plot" aria-pressed="false">情节体检</button>
+  <button type="button" data-view="stage" aria-pressed="false">全书阶段</button>
+  <button type="button" data-view="profile" aria-pressed="false">偏好档案</button>
+  <button type="button" data-view="picker" aria-pressed="false">目录选择器</button>
+</nav>
+<main>
+  <div class="pane" data-preview="cards">${CARDS}</div>
+  <div class="pane nc-ui" data-preview="board" hidden>${BOARD}</div>
+  <div class="pane nc-ui" data-preview="plot" hidden>${PLOT}</div>
+  <div class="pane nc-ui" data-preview="stage" hidden>${STAGE}</div>
+  <div class="pane" data-preview="profile" hidden>${PROFILE}</div>
+  <div class="pane" data-preview="picker" hidden>${PICKER}</div>
+  <div class="pane nc-ui" data-preview="wizard" hidden>${WIZARD}</div>
+</main>
+<p class="hint">预览使用样例数据。正文标注、章节操作和目录浏览可在 DSH 工作台中使用。</p>
 <script>
-  function show(i) {
-    document.querySelectorAll('.pane').forEach(function (pane, j) { pane.dataset.active = String(i === j) })
-    document.querySelectorAll('.tabs button').forEach(function (btn, j) { btn.setAttribute('aria-selected', String(i === j)) })
+  const buttons = document.querySelectorAll('.preview-tabs button')
+  const panes = document.querySelectorAll('.pane')
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      for (const item of buttons) item.setAttribute('aria-pressed', String(item === button))
+      for (const pane of panes) pane.hidden = pane.dataset.preview !== button.dataset.view
+    })
   }
 </script>
 </body>

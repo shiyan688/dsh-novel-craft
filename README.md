@@ -43,7 +43,7 @@
 - 想让 AI 一键自动生成整本小说
 - 想要零投入全自动的
 
-**前置条件**：Node 22 + DeepSeek Harness。dsh ≥ 0.1.5 在 Node 20 下起 `dsh web` 会静默退出（不打印、不监听端口），看起来特别像"插件不兼容"，其实是环境问题。
+**前置条件**：DeepSeek Harness。命令行版 DSH 0.2.2-rc.1 需要 Node 24.9 或更新版本，官方 Desktop 自带运行时。
 
 ---
 
@@ -70,13 +70,19 @@
 
 ---
 
-## 安装：一行命令
+## 安装
+
+### DSH Web
 
 ```bash
 dsh plugin --profile web add dsh-novel-craft
 ```
 
 装完**重启一次 dsh**（宿主半区在启动时装载）。侧栏底部会出现「🎴 抽卡工作台」。
+
+### 官方 DSH Desktop
+
+在 Desktop 的「插件」页面添加 `dsh-novel-craft`，完全退出后重新打开。侧栏底部会出现「抽卡工作台」。也可以先启动一次 Desktop，退出后用 Desktop 安装的 `dsh` 命令执行 `dsh plugin --profile desktop add dsh-novel-craft`，再打开应用。
 
 不想装也能先看：把仓库里的 [`docs/preview.html`](./docs/preview.html) 用浏览器打开，那是**真实组件渲染出来的界面快照**，七个页签都能点。
 
@@ -199,7 +205,7 @@ C 双层信息差：让掌柜也在算计，读者比主角先看出一层
 一个跑在 DeepSeek Harness（dsh）上的开源 AI 小说写作插件，MIT 协议。核心能力是「偏好校准」：你读候选稿时点 👍/👎，模型把你的点选提炼成几条写作规律，下一轮写稿自动带上，越用越接近你的口味。
 
 **我需要先装什么才能用？**
-Node 22 + DeepSeek Harness。装完插件必须**重启一次 dsh**（宿主半区在启动时装载）。dsh ≥ 0.1.5 用 Node 20 起 `dsh web` 会静默退出，看起来很像插件不兼容，其实是环境问题——兼容脚本会自己找 Node 22。
+安装 DeepSeek Harness Web 或官方 Desktop，然后按上面的步骤装插件并重启。命令行版的 Node 要求以 DSH 发行版本为准。
 
 **要写提示词吗？**
 不用。整个流程里你唯一要做的是点赞和点踩。这是它和"自己调提示词"最大的区别——判断很好下，表达很难写。
@@ -240,7 +246,7 @@ Node 22 + DeepSeek Harness。装完插件必须**重启一次 dsh**（宿主半�
 
 dsh 是一组各自独立发版的包——同一个公开版本里，CLI 可能是 `0.1.5-rc.2` 而客户端运行时还是 `0.1.1-rc.2`。所以本插件不锁版本号，peer 依赖声明为 `*`，运行时从你的 profile 解析。
 
-实测跑通的：`0.1.0-rc.7`（作者日常）、`0.1.2-rc.1`、`0.1.5-rc.1`（`latest`）、`0.1.5-rc.2`（`next`）、`0.1.6-alpha.1`。
+DSH Web 已验证 `0.2.2-rc.1`。新版 Web 和官方 Desktop 使用 DSH 的认证 API。较早的宿主保留回环 HTTP 入口。
 
 一条命令自证：
 
@@ -248,9 +254,9 @@ dsh 是一组各自独立发版的包——同一个公开版本里，CLI 可能
 node scripts/check-dsh-compat.mjs next    # 或 latest / alpha / 具体版本号
 ```
 
-它会在临时目录里真装一份那个版本的 dsh、按 profile 的方式挂上插件、用独立 `DSH_HOME` 起服务，断言宿主路由可用、客户端半区进了启动清单、半区能正确下发。跑完自动清理，不影响你正在用的实例。
+脚本用独立 `DSH_HOME` 启动真实宿主，检查认证、保存候选目录、重载后读取候选稿，以及客户端模块下发。
 
-> **dsh ≥ 0.1.5 需要 Node 22。**用 Node 20 起 `dsh web` 会**静默退出**（不打印、不监听端口），看起来特别像"插件不兼容"。兼容脚本会自己找 Node 22，找不到就把启动失败判成环境问题、跳过，而不是报兼容性失败。
+> 运行新版冒烟测试请用 Node 24.9 或更新版本。可用 `DSH_NODE` 指定 Node 路径。
 
 两个写给插件作者的坑：**行的 `apply` 可能早于服务挂载**（同步 `apply` 里 `ctx.get('webServer')` 会是 `undefined`，本插件因此改成 `ctx.inject` 等就绪 + 超时兜底）；**客户端 bundle 的下发地址变了**（新版是组合脚本 `/plugins/??a/client.js,b/client.js&rev=…`）。
 
