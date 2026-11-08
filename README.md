@@ -80,6 +80,12 @@ dsh plugin --profile web add dsh-novel-craft
 
 装完**重启一次 dsh**（宿主半区在启动时装载）。侧栏底部会出现「🎴 抽卡工作台」。
 
+也可以从 [GitHub Release](https://github.com/shiyan688/dsh-novel-craft/releases/latest) 下载最新的插件安装包。以 0.3.1 为例，在下载目录执行：
+
+```bash
+dsh plugin --profile web add "$PWD/dsh-novel-craft-0.3.1.tgz"
+```
+
 ### 官方 DSH Desktop
 
 在 Desktop 的「插件」页面添加 `dsh-novel-craft`，完全退出后重新打开。侧栏底部会出现「抽卡工作台」。也可以先启动一次 Desktop，退出后用 Desktop 安装的 `dsh` 命令执行 `dsh plugin --profile desktop add dsh-novel-craft`，再打开应用。

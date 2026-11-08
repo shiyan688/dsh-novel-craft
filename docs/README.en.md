@@ -80,6 +80,12 @@ dsh plugin --profile web add dsh-novel-craft
 
 Restart dsh once afterwards (the host half loads at startup). A 「🎴 抽卡工作台」 entry appears at the bottom of the sidebar.
 
+You can also download the plugin tarball from the [latest GitHub release](https://github.com/shiyan688/dsh-novel-craft/releases/latest). For 0.3.1, run this in your download directory:
+
+```bash
+dsh plugin --profile web add "$PWD/dsh-novel-craft-0.3.1.tgz"
+```
+
 ### Official DSH Desktop
 
 Add `dsh-novel-craft` from the Plugins page, quit the app completely, and reopen it. The workbench appears at the bottom of the sidebar. You can also launch Desktop once, quit it, run `dsh plugin --profile desktop add dsh-novel-craft` with the Desktop-installed command, and reopen the app.
