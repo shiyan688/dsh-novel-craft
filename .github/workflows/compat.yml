@@ -36,7 +36,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
 
       - name: 安装依赖（测试需要 peer 与 react 对）
         run: npm install --no-audit --no-fund
